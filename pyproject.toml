@@ -1,0 +1,21 @@
+[project]
+name = "pytorch-pr-review-filter"
+version = "0.1.0"
+description = "Agentic PR review filter for PyTorch torch.compile critical bug detection"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pytorch-jira-bot",
+    "pyyaml",
+    "pandas",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-mock"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["pr_filter"]
