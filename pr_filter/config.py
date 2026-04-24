@@ -1,43 +1,60 @@
 """Configuration management for PR review filter."""
 
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 
-import yaml
-
-from pr_filter.data_structs import PRFilter, PRReviewConfig
+from pr_filter.data_structs import (
+    PRFilter,
+    PRReviewConfig,
+    _get_default_skill_paths,
+)
 
 
 def load_config(config_path: str) -> PRReviewConfig:
-    """Load configuration from YAML file."""
+    """Load configuration from JSON file.
+
+    The filter section supports:
+    - days_back: Number of days to look back (converted to created_after)
+    - created_after: ISO format date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+    - created_before: ISO format date string
+
+    If days_back is set, it takes precedence over created_after.
+    """
     with open(config_path) as f:
-        config_dict = yaml.safe_load(f)
+        config_dict = json.load(f)
 
     # Parse filter configuration
     filter_dict = config_dict.get("filter", {})
+
+    # Handle date filtering
+    created_after = None
+    if filter_dict.get("days_back"):
+        # Convert days_back to created_after
+        days_back = filter_dict["days_back"]
+        created_after = datetime.now() - timedelta(days=days_back)
+    elif filter_dict.get("created_after"):
+        # Use explicit created_after date
+        created_after = datetime.fromisoformat(filter_dict["created_after"])
+
+    created_before = None
+    if filter_dict.get("created_before"):
+        created_before = datetime.fromisoformat(filter_dict["created_before"])
+
     filter_config = PRFilter(
         repo=config_dict.get("repository", "pytorch/pytorch"),
         authors=filter_dict.get("authors"),
         labels=filter_dict.get("labels"),
-        created_after=(
-            datetime.fromisoformat(filter_dict["created_after"])
-            if filter_dict.get("created_after")
-            else None
-        ),
-        created_before=(
-            datetime.fromisoformat(filter_dict["created_before"])
-            if filter_dict.get("created_before")
-            else None
-        ),
+        created_after=created_after,
+        created_before=created_before,
     )
+
+    # Get skill paths from config, use defaults if None or not present
+    skill_paths = config_dict.get("skill_paths")
+    if skill_paths is None:
+        skill_paths = _get_default_skill_paths()
 
     return PRReviewConfig(
         repository=config_dict["repository"],
         filter_config=filter_config,
-        skill_paths=config_dict.get(
-            "skill_paths",
-            [
-                "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-dynamo/SKILL.md",
-                "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-inductor/SKILL.md",
-            ],
-        ),
+        skill_paths=skill_paths,
     )

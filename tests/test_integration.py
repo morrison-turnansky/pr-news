@@ -1,5 +1,6 @@
 """Integration tests for end-to-end pipeline."""
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -11,17 +12,15 @@ from pr_filter.config import PRReviewConfig, load_config
 
 @pytest.fixture
 def test_config():
-    """Create a test config YAML file."""
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
-        f.write("""repository: "pytorch/pytorch"
+    """Create a test config JSON file."""
+    config_data = {
+        "repository": "pytorch/pytorch",
+        "skill_paths": ["skills/pr_critique.md"],
+        "filter": {"labels": ["module: dynamo"], "authors": []},
+    }
 
-skill_paths:
-  - "skills/pr_critique.md"
-
-filter:
-  labels: ["module: dynamo"]
-  authors: []
-""")
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
+        json.dump(config_data, f, indent=2)
         config_path = f.name
 
     yield config_path
@@ -61,7 +60,7 @@ def test_stdout_logging(mock_stdout):
 
 def test_config_loading(test_config):
     """
-    Given: config.yaml file
+    Given: config.json file
     When: load_config() called
     Then: PRReviewConfig loaded correctly with all settings
     """

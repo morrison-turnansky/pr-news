@@ -76,7 +76,7 @@ data_structs.py (foundation - no internal dependencies)
 Shows the order files are called during a typical PR review run:
 
 **1. Load Configuration**
-- **config.py** - `load_config()` reads YAML file
+- **config.py** - `load_config()` reads JSON config file
   - Returns `PRReviewConfig` with repository, skill paths, filter criteria, Vertex AI settings
 
 **2. Fetch PRs**
@@ -127,16 +127,56 @@ For each PR, the flow is:
 
 - **end_to_end.py** - End-to-end demo showing complete workflow: fetch PRs → analyze with Claude → export results
 
-### Authentication
+### Authentication and Configuration
 
-Requires Google Cloud Vertex AI with Claude enabled. Environment variables are automatically loaded into `PRReviewConfig`:
-- `ANTHROPIC_VERTEX_PROJECT_ID` - Vertex AI project ID (loaded into `config.vertex_project_id`)
-- `CLOUD_ML_REGION` - Region (e.g., us-east5) (loaded into `config.cloud_ml_region`)
-- `CLAUDE_CODE_USE_VERTEX=1` - Tell Claude CLI to use Vertex (loaded into `config.use_vertex`)
-- `GOOGLE_APPLICATION_CREDENTIALS` - gcloud auth credentials (loaded into `config.google_credentials_path`)
+### Required Environment Variables
+
+Requires Google Cloud Vertex AI with Claude enabled:
+- `ANTHROPIC_VERTEX_PROJECT_ID` - Vertex AI project ID
+- `CLOUD_ML_REGION` - Region (e.g., us-east5)
+- `CLAUDE_CODE_USE_VERTEX=1` - Tell Claude CLI to use Vertex
+- `GOOGLE_APPLICATION_CREDENTIALS` - gcloud auth credentials path
 - `GH_TOKEN` - GitHub personal access token
 
-Configuration can override Vertex AI environment variables by passing explicit values to `PRReviewConfig`.
+### Path Configuration (3 Options)
+
+**Option 1: JSON Configuration (Recommended)**
+
+Use `config.json` to set all configuration including skill paths:
+```json
+{
+  "repository": "pytorch/pytorch",
+  "skill_paths": [
+    "/custom/path/to/pytorch-dynamo/SKILL.md",
+    "/custom/path/to/pytorch-inductor/SKILL.md"
+  ],
+  "filter": {
+    "labels": ["module: dynamo"],
+    "days_back": 1
+  }
+}
+```
+
+Load with: `config = load_config("config.json")`
+
+If `skill_paths` is set to `null`, falls back to environment variables.
+
+**Option 2: Environment Variables**
+
+Set environment variables (used as defaults when `skill_paths` is `null` in JSON):
+- `PYTORCH_WORKSPACE` - Path to PyTorch repository (default: `/workspaces/pytorch-devcontainers/pytorch`)
+- `SKILLS_BASE_DIR` - Path to skills directory (default: `/workspaces/pytorch-devcontainers/.claude/skills`)
+
+**Option 3: Direct Construction**
+
+Pass explicit values: `PRReviewConfig(workspace_path="...", skill_paths=[...])`
+
+**Precedence**: JSON overrides → Environment variables → Hardcoded defaults
+
+Helper functions in `data_structs.py`:
+- `_get_workspace_root()` - reads `PYTORCH_WORKSPACE` env var
+- `_get_skills_base()` - reads `SKILLS_BASE_DIR` env var
+- `_get_default_skill_paths()` - builds paths from `SKILLS_BASE_DIR`
 
 ## Review Process
 

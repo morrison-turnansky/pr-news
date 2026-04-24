@@ -21,11 +21,11 @@ Required environment variables:
 
 import os
 import sys
-from datetime import datetime, timedelta
+from pathlib import Path
 
-from pr_filter.config import PRReviewConfig
+from pr_filter.config import load_config
 from pr_filter.critique import critique_pr
-from pr_filter.data_structs import PRFilter, Verdict
+from pr_filter.data_structs import Verdict
 from pr_filter.filter import fetch_prs
 from pr_filter.output import export_json, print_review
 
@@ -39,25 +39,16 @@ def main():
         print("\nSet it with: export GH_TOKEN=your_github_token")
         sys.exit(1)
 
-    # Configure analysis
-    now = datetime.now()
-    two_days_ago = now - timedelta(days=1)
+    # Load configuration from JSON
+    # All settings (repository, skill_paths, filter criteria) come from config.json
+    # Use path relative to this script's location
+    script_dir = Path(__file__).parent
+    config_path = script_dir / "config.json"
+    config = load_config(str(config_path))
 
-    filter_criteria = PRFilter(
-        repo="pytorch/pytorch",
-        labels=["module: dynamo"],
-        created_after=two_days_ago,
-        authors=None,
-    )
-
-    skills_base = "/workspaces/pytorch-devcontainers/.claude/skills"
-    config = PRReviewConfig(
-        repository="pytorch/pytorch",
-        skill_paths=[
-            f"{skills_base}/pytorch-dynamo/SKILL.md",
-            f"{skills_base}/pytorch-inductor/SKILL.md",
-        ],
-    )
+    # Use filter configuration from config.json
+    # The config already contains filter_config from the JSON file
+    filter_criteria = config.filter_config
 
     # Verify Vertex AI configuration
     try:

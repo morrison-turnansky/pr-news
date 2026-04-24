@@ -1,0 +1,18 @@
+{
+  "_comment": "PR Review Filter Configuration",
+  "repository": "pytorch/pytorch",
+  "_skill_paths_comment": "Skill file paths for domain knowledge. Set to null to use SKILLS_BASE_DIR env var",
+  "skill_paths": [
+    "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-dynamo/SKILL.md",
+    "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-inductor/SKILL.md"
+  ],
+  "_filter_comment": "PR filter criteria - used by end_to_end.py",
+  "filter": {
+    "_labels_comment": "Labels to filter by",
+    "labels": ["module: dynamo"],
+    "_authors_comment": "Authors to filter by (null = all authors)",
+    "authors": null,
+    "_dates_comment": "Date range in days (e.g., 1 = last 1 day, 7 = last week). Set to null to disable date filtering",
+    "days_back": 1
+  }
+}

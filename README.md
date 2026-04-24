@@ -19,8 +19,13 @@ export CLOUD_ML_REGION="region"
 export CLAUDE_CODE_USE_VERTEX="1"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
 
+# Optional: customize paths (defaults work in devcontainer)
+# export PYTORCH_WORKSPACE="/custom/path/to/pytorch"
+# export SKILLS_BASE_DIR="/custom/path/to/skills"
+
 # Run analysis on dynamo PRs from specific date range
-python end_to_end.py
+python pytorch-pr-review-filter/end_to_end.py
+# (Can be run from any directory - config.json is auto-located)
 ```
 
 Output shows BLOCK verdicts only (critical bugs detected):
