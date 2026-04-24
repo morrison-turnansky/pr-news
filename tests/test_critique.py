@@ -1,11 +1,14 @@
 """Tests for agentic PR critique functionality."""
 
-import pytest
-from unittest.mock import Mock, patch, call
+import os
 from datetime import datetime
-from pr_filter.models import PullRequest, CritiquedPR
-from pr_filter.config import PRReviewConfig, ModelParams
+from unittest.mock import patch
+
+import pytest
+
+from pr_filter.config import PRReviewConfig
 from pr_filter.critique import critique_pr
+from pr_filter.data_structs import PullRequest, ReviewResult, Verdict
 
 
 @pytest.fixture
@@ -28,7 +31,7 @@ index 123..456 100644
 """,
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        author="test_user"
+        author="test_user",
     )
 
 
@@ -37,34 +40,39 @@ def config():
     """Create a test configuration."""
     return PRReviewConfig(
         repository="pytorch/pytorch",
-        input_csv_path="test.csv",
-        skill_paths=["skills/pr_critique.md"],
-        self_check_enabled=False  # Disable for basic tests
+        skill_paths=[],
     )
 
 
-@pytest.fixture
-def config_with_self_check():
-    """Create a test configuration with self-check enabled."""
-    return PRReviewConfig(
-        repository="pytorch/pytorch",
-        input_csv_path="test.csv",
-        skill_paths=["skills/pr_critique.md"],
-        self_check_enabled=True
-    )
-
-
-@patch('pr_filter.critique.VertexAI')
-def test_critique_uses_fresh_agent_per_pr(mock_vertex_class, sample_pr, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_uses_fresh_agent_per_pr(mock_run_claude, sample_pr, config):
     """
     Given: 3 PRs to analyze
     When: critique_pr() called for each
-    Then: 3 separate VertexAI.generate_content() calls made, no session reuse
+    Then: 3 separate run_claude_code() calls made, no session reuse
     """
-    # Create mock instance
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = "Verdict: PASS\nConfidence: HIGH\nExplanation: No issues found"
-    mock_vertex_class.return_value = mock_vertex
+    # Mock Claude Code to return PASS verdict
+    mock_run_claude.return_value = {
+        "comments": [],
+        "summary": {
+            "total_issues": 0,
+            "critical": 0,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 1,
+            "explanation": "No issues found",
+        },
+    }
 
     # Create 3 PRs
     pr1 = sample_pr
@@ -76,7 +84,7 @@ def test_critique_uses_fresh_agent_per_pr(mock_vertex_class, sample_pr, config):
         diff="diff --git a/torch/_inductor/scheduler.py ...",
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        author="test_user"
+        author="test_user",
     )
     pr3 = PullRequest(
         pr_number=12347,
@@ -86,58 +94,96 @@ def test_critique_uses_fresh_agent_per_pr(mock_vertex_class, sample_pr, config):
         diff="diff --git a/torch/_dynamo/symbolic_convert.py ...",
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        author="test_user"
+        author="test_user",
     )
 
-    reduced_diff = "some reduced diff"
-
     # Analyze each PR
-    critique_pr(pr1, reduced_diff, config)
-    critique_pr(pr2, reduced_diff, config)
-    critique_pr(pr3, reduced_diff, config)
+    critique_pr(pr1, config)
+    critique_pr(pr2, config)
+    critique_pr(pr3, config)
 
     # Verify 3 separate calls were made (fresh agent pattern)
-    assert mock_vertex.generate_content.call_count == 3
+    assert mock_run_claude.call_count == 3
 
 
-@patch('pr_filter.critique.VertexAI')
-def test_critique_block_verdict_with_explanation(mock_vertex_class, sample_pr, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_block_verdict_with_explanation(mock_run_claude, sample_pr, config):
     """
     Given: PR with clear bug
     When: critique_pr() called
     Then: BLOCK verdict with detailed explanation returned
     """
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = """Verdict: BLOCK
-Confidence: HIGH
-Explanation: Guard generation logic in guards.py line 42 fails to account for list mutation.
-If a VariableTracker wraps a list that gets mutated after guard creation, the guard will miss
-the change and allow incorrect specialization. This causes silent wrong results when the cached
-graph is reused with different list contents."""
-    mock_vertex_class.return_value = mock_vertex
+    mock_run_claude.return_value = {
+        "comments": [
+            {
+                "file": "torch/_dynamo/guards.py",
+                "line": 42,
+                "severity": "critical",
+                "category": "correctness",
+                "message": "Guard generation logic fails to account for list mutation",
+                "suggestion": "Add mutation tracking in VariableTracker",
+                "verdict": 0,
+            }
+        ],
+        "summary": {
+            "total_issues": 1,
+            "critical": 1,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 0,
+            "explanation": "Guard generation logic in guards.py line 42 fails to account for list mutation. "
+            "This causes silent wrong results when the cached graph is reused with different list contents.",
+        },
+    }
 
-    reduced_diff = sample_pr.diff
-    result = critique_pr(sample_pr, reduced_diff, config)
+    result = critique_pr(sample_pr, config)
 
-    assert isinstance(result, CritiquedPR)
-    assert result.verdict == "BLOCK"
-    assert result.confidence == "HIGH"
-    assert "list mutation" in result.issue_explanation
+    assert isinstance(result, ReviewResult)
+    assert result.verdict == Verdict.BLOCK
+    assert "list mutation" in result.summary.explanation
     assert result.pr_number == 12345
+    assert len(result.comments) == 1
+    assert result.comments[0].severity == "critical"
 
 
-@patch('pr_filter.critique.VertexAI')
-def test_critique_pass_verdict_for_safe_change(mock_vertex_class, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_pass_verdict_for_safe_change(mock_run_claude, config):
     """
     Given: PR with safe refactoring
     When: critique_pr() called
     Then: PASS verdict returned
     """
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = """Verdict: PASS
-Confidence: HIGH
-Explanation: This is a safe refactoring that improves code clarity without changing behavior."""
-    mock_vertex_class.return_value = mock_vertex
+    mock_run_claude.return_value = {
+        "comments": [],
+        "summary": {
+            "total_issues": 0,
+            "critical": 0,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 1,
+            "explanation": "This is a safe refactoring that improves code clarity without changing behavior.",
+        },
+    }
 
     safe_pr = PullRequest(
         pr_number=12348,
@@ -147,28 +193,43 @@ Explanation: This is a safe refactoring that improves code clarity without chang
         diff="diff --git a/torch/_dynamo/utils.py ...",
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        author="test_user"
+        author="test_user",
     )
 
-    reduced_diff = "some safe refactoring diff"
-    result = critique_pr(safe_pr, reduced_diff, config)
+    result = critique_pr(safe_pr, config)
 
-    assert result.verdict == "PASS"
-    assert result.issue_explanation == ""  # No explanation for PASS
+    assert result.verdict == Verdict.PASS
+    assert result.summary.total_issues == 0
 
 
-@patch('pr_filter.critique.VertexAI')
-def test_critique_default_pass_on_uncertainty(mock_vertex_class, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_default_pass_on_uncertainty(mock_run_claude, config):
     """
     Given: PR with ambiguous changes
     When: critique_pr() called
     Then: PASS verdict (default behavior when uncertain)
     """
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = """Verdict: PASS
-Confidence: MEDIUM
-Explanation: Cannot determine if this change introduces issues. Default to PASS."""
-    mock_vertex_class.return_value = mock_vertex
+    mock_run_claude.return_value = {
+        "comments": [],
+        "summary": {
+            "total_issues": 0,
+            "critical": 0,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 1,
+            "explanation": "Cannot determine if this change introduces issues. Default to PASS.",
+        },
+    }
 
     ambiguous_pr = PullRequest(
         pr_number=12349,
@@ -178,95 +239,108 @@ Explanation: Cannot determine if this change introduces issues. Default to PASS.
         diff="diff --git a/torch/_dynamo/convert.py ...",
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        author="test_user"
+        author="test_user",
     )
 
-    reduced_diff = "some ambiguous diff"
-    result = critique_pr(ambiguous_pr, reduced_diff, config)
+    result = critique_pr(ambiguous_pr, config)
 
-    assert result.verdict == "PASS"
+    assert result.verdict == Verdict.PASS
 
 
-@patch('pr_filter.critique.VertexAI')
-def test_critique_explanation_format(mock_vertex_class, sample_pr, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_explanation_format(mock_run_claude, sample_pr, config):
     """
     Given: PR with BLOCK verdict
     When: critique_pr() called
-    Then: Explanation includes: what changed, flaw, why incorrect, when fails
+    Then: Comments include file, line, severity, category, message
     """
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = """Verdict: BLOCK
-Confidence: HIGH
-Explanation: File: torch/_dynamo/guards.py, line 42
-What changed: Modified guard generation to skip list mutation checks
-What's the flaw: Guard misses when VariableTracker wraps a mutated list
-Why incorrect: Cached graph assumes immutable list, but list was modified
-When it fails: When a VariableTracker wraps a list that gets mutated after guard creation"""
-    mock_vertex_class.return_value = mock_vertex
+    mock_run_claude.return_value = {
+        "comments": [
+            {
+                "file": "torch/_dynamo/guards.py",
+                "line": 42,
+                "severity": "critical",
+                "category": "correctness",
+                "message": "Modified guard generation to skip list mutation checks. "
+                "Guard misses when VariableTracker wraps a mutated list. "
+                "This fails when a VariableTracker wraps a list that gets mutated after guard creation.",
+                "suggestion": "Add mutation tracking",
+                "verdict": 0,
+            }
+        ],
+        "summary": {
+            "total_issues": 1,
+            "critical": 1,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 0,
+            "explanation": "Critical correctness bug in guard generation",
+        },
+    }
 
-    reduced_diff = sample_pr.diff
-    result = critique_pr(sample_pr, reduced_diff, config)
+    result = critique_pr(sample_pr, config)
 
-    assert result.verdict == "BLOCK"
-    explanation = result.issue_explanation
+    assert result.verdict == Verdict.BLOCK
+    assert len(result.comments) == 1
+    comment = result.comments[0]
 
-    # Check all required elements present
-    assert "What changed" in explanation or "torch/_dynamo/guards.py" in explanation
-    assert "flaw" in explanation or "Guard misses" in explanation
-    assert "Why incorrect" in explanation or "incorrect" in explanation.lower()
-    assert "When it fails" in explanation or "when" in explanation.lower()
+    # Check structured comment fields
+    assert comment.file == "torch/_dynamo/guards.py"
+    assert comment.line == 42
+    assert comment.severity == "critical"
+    assert comment.category == "correctness"
+    assert "Guard misses" in comment.message
 
 
-@patch('pr_filter.critique.VertexAI')
-@patch('pr_filter.critique.load_skills')
-def test_critique_loads_skills(mock_load_skills, mock_vertex_class, sample_pr, config):
+@patch.dict(
+    os.environ,
+    {
+        "ANTHROPIC_VERTEX_PROJECT_ID": "test-project",
+        "CLOUD_ML_REGION": "us-east5",
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/fake/path/creds.json",
+    },
+)
+@patch("pr_filter.critique.run_claude_code")
+def test_critique_loads_skills(mock_run_claude, sample_pr, config):
     """
     Given: Config with skill paths
     When: critique_pr() called
-    Then: Skills loaded and included in prompt
+    Then: Skill paths referenced in prompt for Claude to Read if needed
     """
-    mock_load_skills.return_value = "# PyTorch Dynamo Skill Content"
+    config.skill_paths = ["skill1.md", "skill2.md"]
 
-    mock_vertex = Mock()
-    mock_vertex.generate_content.return_value = "Verdict: PASS\nConfidence: HIGH\nExplanation: "
-    mock_vertex_class.return_value = mock_vertex
+    mock_run_claude.return_value = {
+        "comments": [],
+        "summary": {
+            "total_issues": 0,
+            "critical": 0,
+            "major": 0,
+            "minor": 0,
+            "suggestions": 0,
+            "verdict": 1,
+            "explanation": "No issues found",
+        },
+    }
 
-    reduced_diff = sample_pr.diff
-    critique_pr(sample_pr, reduced_diff, config)
+    critique_pr(sample_pr, config)
 
-    # Verify skills were loaded
-    mock_load_skills.assert_called_once_with(config.skill_paths)
+    # Verify Claude was called
+    assert mock_run_claude.call_count == 1
 
-    # Verify generate_content was called with prompt including skills
-    assert mock_vertex.generate_content.call_count == 1
-
-
-@patch('pr_filter.critique.VertexAI')
-def test_critique_self_check_reduces_false_positives(mock_vertex_class, sample_pr, config_with_self_check):
-    """
-    Given: Weak BLOCK verdict and self-check enabled
-    When: critique_pr() called
-    Then: Self-check validates and may change verdict to PASS
-    """
-    mock_vertex = Mock()
-
-    # First call returns weak BLOCK
-    # Second call (self-check) changes to PASS
-    mock_vertex.generate_content.side_effect = [
-        """Verdict: BLOCK
-Confidence: MEDIUM
-Explanation: This might potentially cause issues""",
-        """Verdict: PASS
-Confidence: MEDIUM
-Explanation: On review, this is speculative. Changing to PASS."""
-    ]
-    mock_vertex_class.return_value = mock_vertex
-
-    reduced_diff = sample_pr.diff
-    result = critique_pr(sample_pr, reduced_diff, config_with_self_check)
-
-    # Should call generate_content twice (initial + self-check)
-    assert mock_vertex.generate_content.call_count == 2
-
-    # Final verdict should be PASS after self-check
-    assert result.verdict == "PASS"
+    # Verify skill paths were included in prompt
+    call_args = mock_run_claude.call_args
+    prompt = call_args[0][0]  # First positional argument is the prompt
+    assert "skill1.md" in prompt
+    assert "skill2.md" in prompt
+    assert "use Read tool" in prompt or "use the Read tool" in prompt

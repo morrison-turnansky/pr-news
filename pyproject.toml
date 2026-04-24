@@ -3,15 +3,22 @@ name = "pytorch-pr-review-filter"
 version = "0.1.0"
 description = "Agentic PR review filter for PyTorch torch.compile critical bug detection"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "pytorch-jira-bot",
     "pyyaml",
     "pandas",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-mock"]
+dev = [
+    "pytest",
+    "pytest-mock",
+    "ruff",
+    "pyrefly",
+    "pre-commit",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -19,3 +26,37 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["pr_filter"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "N802",  # function name should be lowercase (pytest fixtures can be CamelCase)
+]
+
+[tool.pyrefly]
+paths = ["pr_filter", "tests"]
