@@ -1,12 +1,12 @@
-# PyTorch PR Review Filter
+# PR Review Filter
 
-AI-assisted PR review filter for PyTorch torch.compile. Analyzes PRs to detect critical bugs in Dynamo and Inductor using Claude Code agent via Google Vertex AI.
+AI-assisted PR review filter that detects critical bugs using Claude Code agent via Google Vertex AI.
 
 **Design Philosophy**: Precision over recall — minimize false positives, default to PASS.
 
 ## Usage
 
-Fetch and analyze PyTorch PRs from GitHub API. Filter by label, author, and date range. Claude Code agent explores the codebase with tools (Read, Grep) to produce structured reviews.
+Fetch and analyze PRs from GitHub API. Filter by label, author, and date range. Claude Code agent explores the codebase with tools (Read, Grep) to produce structured reviews with domain-specific guidance.
 
 ```bash
 # Authenticate with gcloud (one-time setup)
@@ -19,19 +19,16 @@ export CLOUD_ML_REGION="region"
 export CLAUDE_CODE_USE_VERTEX="1"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
 
-# Optional: customize paths (defaults work in devcontainer)
-# export PYTORCH_WORKSPACE="/custom/path/to/pytorch"
-# export SKILLS_BASE_DIR="/custom/path/to/skills"
-
-# Run analysis on dynamo PRs from specific date range
+# Run analysis (uses config.json for all settings)
+# Configure repository, workspace_path, skills, and filters in config.json
 python pytorch-pr-review-filter/end_to_end.py
 # (Can be run from any directory - config.json is auto-located)
 ```
 
-Output shows BLOCK verdicts only (critical bugs detected):
+Output shows analysis results with BLOCK/PASS verdicts:
 
 ```
-[1/15] Analyzing PR #180389: [dynamo] Allow tracing into _maybe_view_chunk_cat
+[1/15] Analyzing PR #12345: Fix memory leak in cache layer
   Diff size: 46 lines
   ✓ Verdict: PASS
 
@@ -40,6 +37,36 @@ PASSED: 15
 ```
 
 Results are exported to `pr_analysis_results.json` with structured review data.
+
+## Configuration
+
+Edit `config.json` to specify your repository and settings:
+
+```json
+{
+  "repository": "your-org/your-repo",
+  "workspace_path": "/path/to/local/clone",
+  "skill_paths": [],
+  "filter": {
+    "labels": ["bug"],
+    "days_back": 7
+  }
+}
+```
+
+**Required fields:**
+- `repository`: GitHub repository to fetch PRs from (org/repo format)
+- `workspace_path`: Local path to repository clone (where Claude can read code)
+
+**Optional fields:**
+- `skill_paths`: Domain-specific skill files for specialized guidance (defaults to [])
+- `filter.labels`: GitHub labels to filter PRs
+- `filter.authors`: PR authors to include (null = all)
+- `filter.days_back`: Number of days to look back
+
+## Example: PyTorch torch.compile Review
+
+This tool was originally built for PyTorch Dynamo and Inductor. See `config.json` for an example configuration that reviews PyTorch PRs with domain-specific skills.
 
 ## Installation
 

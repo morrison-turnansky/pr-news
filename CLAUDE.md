@@ -1,8 +1,8 @@
-# PyTorch PR Review Filter
+# PR Review Filter
 
 ## Purpose
 
-AI-assisted PR review filter for PyTorch `torch.compile` that detects critical bugs in Dynamo and Inductor components using Claude Code agent via Google Vertex AI.
+AI-assisted PR review filter that detects critical bugs using Claude Code agent via Google Vertex AI. Designed to be repository-agnostic with optional domain-specific skills.
 
 **Design Philosophy**: Precision over recall — minimize false positives, default to PASS.
 
@@ -138,17 +138,19 @@ Requires Google Cloud Vertex AI with Claude enabled:
 - `GOOGLE_APPLICATION_CREDENTIALS` - gcloud auth credentials path
 - `GH_TOKEN` - GitHub personal access token
 
-### Path Configuration (3 Options)
+### Configuration
 
-**Option 1: JSON Configuration (Recommended)**
+**Required Fields**
 
-Use `config.json` to set all configuration including skill paths:
+Both repository and workspace paths must be specified in `config.json`:
+
 ```json
 {
   "repository": "pytorch/pytorch",
+  "workspace_path": "/workspaces/pytorch-devcontainers/pytorch",
   "skill_paths": [
-    "/custom/path/to/pytorch-dynamo/SKILL.md",
-    "/custom/path/to/pytorch-inductor/SKILL.md"
+    "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-dynamo/SKILL.md",
+    "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-inductor/SKILL.md"
   ],
   "filter": {
     "labels": ["module: dynamo"],
@@ -157,32 +159,29 @@ Use `config.json` to set all configuration including skill paths:
 }
 ```
 
+- **repository** (required): GitHub repository to fetch PRs from (org/repo format)
+- **workspace_path** (required): Local path to repository clone where Claude can read code
+- **skill_paths** (optional): Domain-specific skill files for specialized guidance (defaults to [])
+
+Minimal configuration without skills:
+```json
+{
+  "repository": "your-org/your-repo",
+  "workspace_path": "/path/to/local/clone",
+  "filter": {
+    "labels": ["bug"],
+    "days_back": 7
+  }
+}
+```
+
 Load with: `config = load_config("config.json")`
-
-If `skill_paths` is set to `null`, falls back to environment variables.
-
-**Option 2: Environment Variables**
-
-Set environment variables (used as defaults when `skill_paths` is `null` in JSON):
-- `PYTORCH_WORKSPACE` - Path to PyTorch repository (default: `/workspaces/pytorch-devcontainers/pytorch`)
-- `SKILLS_BASE_DIR` - Path to skills directory (default: `/workspaces/pytorch-devcontainers/.claude/skills`)
-
-**Option 3: Direct Construction**
-
-Pass explicit values: `PRReviewConfig(workspace_path="...", skill_paths=[...])`
-
-**Precedence**: JSON overrides → Environment variables → Hardcoded defaults
-
-Helper functions in `data_structs.py`:
-- `_get_workspace_root()` - reads `PYTORCH_WORKSPACE` env var
-- `_get_skills_base()` - reads `SKILLS_BASE_DIR` env var
-- `_get_default_skill_paths()` - builds paths from `SKILLS_BASE_DIR`
 
 ## Review Process
 
 1. **Fetch** - Query GitHub API for PRs matching filter (label, author, date)
 2. **Critique** - For each PR:
-   - Build prompt with diff + PyTorch Dynamo/Inductor skills
+   - Build prompt with diff + optional domain-specific skills
    - Execute `claude -p --output-format json --json-schema <schema>`
    - Parse structured JSON output (comments + summary)
    - Determine verdict: BLOCK (critical/major bugs) or PASS

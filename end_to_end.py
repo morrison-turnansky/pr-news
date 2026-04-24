@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-End-to-end demo: Fetch and analyze PyTorch PRs with dynamo label.
+End-to-end demo: Fetch and analyze PRs from GitHub.
 
 This demonstrates the complete workflow:
-1. Load configuration
-2. Fetch PRs from GitHub
+1. Load configuration from config.json
+2. Fetch PRs from GitHub matching filter criteria
 3. Analyze each PR with Claude Code agent
 4. Export results to JSON
+
+Configuration is read from config.json (repository, filters, skill paths).
 
 Usage:
     python end_to_end.py
@@ -60,7 +62,7 @@ def main():
 
     # Display configuration
     print("=" * 70)
-    print("PyTorch PR Review - End-to-End Demo")
+    print("PR Review Filter - End-to-End Demo")
     print("=" * 70)
     print(f"Repository: {filter_criteria.repo}")
     print(f"Labels: {filter_criteria.labels}")

@@ -40,6 +40,7 @@ def config():
     """Create a test configuration."""
     return PRReviewConfig(
         repository="pytorch/pytorch",
+        workspace_path="/workspace/test",
         skill_paths=[],
     )
 

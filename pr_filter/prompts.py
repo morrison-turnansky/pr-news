@@ -24,7 +24,7 @@ def build_review_prompt(pr: PullRequest, skill_paths: list[str]) -> str:
         Prompt string for Claude Code agent
     """
 
-    prompt = f"""You are reviewing PyTorch PR #{pr.pr_number}: {pr.title}
+    prompt = f"""You are reviewing PR #{pr.pr_number}: {pr.title}
 
 **⏰ CRITICAL TIME REQUIREMENT - READ FIRST ⏰**
 - HARD DEADLINE: 5 minutes (300 seconds) total
@@ -50,10 +50,10 @@ def build_review_prompt(pr: PullRequest, skill_paths: list[str]) -> str:
 - Created: {pr.created_at.strftime("%Y-%m-%d")}
 
 **Your Task:**
-Analyze this PR for critical bugs in torch.compile (Dynamo/Inductor).
+Analyze this PR for critical bugs, correctness issues, and security vulnerabilities.
 
 **Tools Available:**
-- Use `Read` to examine changed files in /workspace/pytorch
+- Use `Read` to examine changed files in the workspace
 - Use `Grep` to search for patterns, usage, dependencies
 - Explore the codebase to understand context
 - **Be strategic**: Max 8-10 tool uses total - focus only on high-risk areas
@@ -118,9 +118,9 @@ Respond with ONLY a valid JSON object in this exact format:
 - Avoid speculation - issues must be demonstrable
 
 **Domain Knowledge Skills (use Read tool if needed):**
-{chr(10).join(f"- {path}" for path in skill_paths) if skill_paths else "No specific skills available"}
+{chr(10).join(f"- {path}" for path in skill_paths) if skill_paths else "No specific domain skills provided"}
 
-If you need domain-specific guidance on PyTorch Dynamo or Inductor internals, use the Read tool to access these skill files.
+If domain-specific skill files are listed above, use the Read tool to access them for specialized guidance on the codebase architecture and common patterns.
 
 **⏱️ TIME CHECK REMINDER ⏱️**
 Remember: You must output JSON within 5 minutes. Budget your tool usage:

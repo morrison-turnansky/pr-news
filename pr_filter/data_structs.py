@@ -45,7 +45,7 @@ class PRFilter(BaseModel):
     labels: list[str] | None = None
     created_after: datetime | None = None
     created_before: datetime | None = None
-    repo: str = "pytorch/pytorch"
+    repo: str = ""
 
 
 class PullRequest(BaseModel):
@@ -119,39 +119,6 @@ class ReviewResult(BaseModel):
         return self.verdict == Verdict.BLOCK
 
 
-def _get_workspace_root() -> str:
-    """Get workspace root directory.
-
-    Order of precedence:
-    1. PYTORCH_WORKSPACE env var
-    2. Default: /workspaces/pytorch-devcontainers/pytorch
-    """
-    return os.getenv("PYTORCH_WORKSPACE", "/workspaces/pytorch-devcontainers/pytorch")
-
-
-def _get_skills_base() -> str:
-    """Get skills base directory.
-
-    Order of precedence:
-    1. SKILLS_BASE_DIR env var
-    2. Default: /workspaces/pytorch-devcontainers/.claude/skills
-    """
-    return os.getenv("SKILLS_BASE_DIR", "/workspaces/pytorch-devcontainers/.claude/skills")
-
-
-def _get_default_skill_paths() -> list[str]:
-    """Get default skill file paths.
-
-    Returns absolute paths to PyTorch Dynamo and Inductor skill files.
-    Paths can be customized via SKILLS_BASE_DIR environment variable.
-    """
-    skills_base = _get_skills_base()
-    return [
-        f"{skills_base}/pytorch-dynamo/SKILL.md",
-        f"{skills_base}/pytorch-inductor/SKILL.md",
-    ]
-
-
 class ModelParams(BaseModel):
     """Claude model parameters."""
 
@@ -163,9 +130,9 @@ class PRReviewConfig(BaseModel):
     """Main configuration for PR review pipeline (Claude Code agent)."""
 
     repository: str
-    workspace_path: str = Field(default_factory=_get_workspace_root)
+    workspace_path: str
+    skill_paths: list[str] = Field(default_factory=list)
     filter_config: PRFilter = Field(default_factory=PRFilter)
-    skill_paths: list[str] = Field(default_factory=_get_default_skill_paths)
     vertex_project_id: str | None = Field(
         default_factory=lambda: os.getenv("ANTHROPIC_VERTEX_PROJECT_ID")
     )

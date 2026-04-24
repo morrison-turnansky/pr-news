@@ -1,4 +1,4 @@
-"""Filter GitHub PRs for PyTorch torch.compile review."""
+"""Filter GitHub PRs for review."""
 
 from datetime import datetime, timedelta
 

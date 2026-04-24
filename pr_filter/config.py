@@ -3,11 +3,7 @@
 import json
 from datetime import datetime, timedelta
 
-from pr_filter.data_structs import (
-    PRFilter,
-    PRReviewConfig,
-    _get_default_skill_paths,
-)
+from pr_filter.data_structs import PRFilter, PRReviewConfig
 
 
 def load_config(config_path: str) -> PRReviewConfig:
@@ -48,13 +44,12 @@ def load_config(config_path: str) -> PRReviewConfig:
         created_before=created_before,
     )
 
-    # Get skill paths from config, use defaults if None or not present
-    skill_paths = config_dict.get("skill_paths")
-    if skill_paths is None:
-        skill_paths = _get_default_skill_paths()
+    # Get skill_paths if provided (defaults to [] if not present or None)
+    skill_paths = config_dict.get("skill_paths") or []
 
     return PRReviewConfig(
         repository=config_dict["repository"],
+        workspace_path=config_dict["workspace_path"],
         filter_config=filter_config,
         skill_paths=skill_paths,
     )

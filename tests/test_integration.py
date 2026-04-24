@@ -15,6 +15,7 @@ def test_config():
     """Create a test config JSON file."""
     config_data = {
         "repository": "pytorch/pytorch",
+        "workspace_path": "/workspace/pytorch",
         "skill_paths": ["skills/pr_critique.md"],
         "filter": {"labels": ["module: dynamo"], "authors": []},
     }

@@ -1,7 +1,10 @@
 {
   "_comment": "PR Review Filter Configuration",
+  "_repository_comment": "GitHub repository to fetch PRs from (org/repo format)",
   "repository": "pytorch/pytorch",
-  "_skill_paths_comment": "Skill file paths for domain knowledge. Set to null to use SKILLS_BASE_DIR env var",
+  "_workspace_path_comment": "Local path to repository clone (where Claude can read code)",
+  "workspace_path": "/workspaces/pytorch-devcontainers/pytorch",
+  "_skill_paths_comment": "Skill file paths for domain knowledge (optional, defaults to [])",
   "skill_paths": [
     "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-dynamo/SKILL.md",
     "/workspaces/pytorch-devcontainers/.claude/skills/pytorch-inductor/SKILL.md"
