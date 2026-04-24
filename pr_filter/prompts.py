@@ -26,22 +26,15 @@ def build_review_prompt(pr: PullRequest, skill_paths: list[str]) -> str:
 
     prompt = f"""You are reviewing PR #{pr.pr_number}: {pr.title}
 
-**⏰ CRITICAL TIME REQUIREMENT - READ FIRST ⏰**
-- HARD DEADLINE: 5 minutes (300 seconds) total
-- After 4 minutes (8-10 tool uses): STOP investigating and OUTPUT JSON immediately
-- Your FINAL message MUST be the JSON review object - this is MANDATORY
-- Partial analysis + JSON = SUCCESS ✓
-- Complete analysis + no JSON = FAILURE ✗
+🚨 MANDATORY OUTPUT REQUIREMENT 🚨
+Your FINAL message MUST be ONLY the JSON review object (see Output Format below).
+- MAX 5 TOOL CALLS TOTAL - After 5 tools, OUTPUT JSON IMMEDIATELY
+- If you exceed 5 tool calls without JSON, you FAIL
+- Better to output verdict: 1 (PASS) quickly than timeout with no JSON
+- NO explanatory text before or after JSON - ONLY the JSON object
 
-**SUCCESS CRITERIA:**
-1. You output valid JSON before timeout (REQUIRED)
-2. JSON contains your analysis findings (can be minimal)
-3. If no issues found, output verdict: 1 (PASS) with brief explanation
-
-**FAILURE (do not do this):**
-- Investigating thoroughly but forgetting to output JSON
-- Running out of time before outputting JSON
-- Ending conversation without JSON output
+**SUCCESS = Output valid JSON within 5 tool uses**
+**FAILURE = Using more than 5 tools OR not outputting JSON**
 
 **PR Information:**
 - Author: {pr.author}
@@ -55,9 +48,8 @@ Analyze this PR for critical bugs, correctness issues, and security vulnerabilit
 **Tools Available:**
 - Use `Read` to examine changed files in the workspace
 - Use `Grep` to search for patterns, usage, dependencies
-- Explore the codebase to understand context
-- **Be strategic**: Max 8-10 tool uses total - focus only on high-risk areas
-- **Stop investigating** after 8 tool calls - prepare to output JSON
+- **STRICT LIMIT: Maximum 5 tool calls total**
+- After 5 tool calls: IMMEDIATELY output JSON (no more investigation)
 
 **Review Focus:**
 1. **Correctness**: Silent bugs, wrong results, incorrect logic
@@ -122,12 +114,11 @@ Respond with ONLY a valid JSON object in this exact format:
 
 If domain-specific skill files are listed above, use the Read tool to access them for specialized guidance on the codebase architecture and common patterns.
 
-**⏱️ TIME CHECK REMINDER ⏱️**
-Remember: You must output JSON within 5 minutes. Budget your tool usage:
-- Max 8-10 tool calls total
-- After 6-7 tools: start wrapping up
-- After 8-9 tools: OUTPUT JSON NOW
-- Better to output verdict: 1 (PASS) quickly than timeout with no JSON
+**⏱️ TOOL BUDGET REMINDER ⏱️**
+- MAX 5 TOOL CALLS - count each Read/Grep as one call
+- After 3-4 tools: prepare to wrap up
+- After 5 tools: STOP and OUTPUT JSON IMMEDIATELY
+- Using more than 5 tools = AUTOMATIC FAILURE
 
 **PR Diff:**
 ```diff
@@ -139,33 +130,22 @@ Remember: You must output JSON within 5 minutes. Budget your tool usage:
 
 Begin your analysis now.
 
-**⚠️ ANALYSIS WORKFLOW - FOLLOW THIS ⚠️**
+**⚠️ ANALYSIS WORKFLOW ⚠️**
 
-Phase 1: Quick scan (2-3 minutes, ~5-6 tool uses)
-- Read changed files
-- Grep for critical patterns if needed
-- Identify potential issues
+Tool Call 1-2: Read the changed files from the diff
+Tool Call 3-4: Quick grep for obvious issues if needed
+Tool Call 5: LAST CALL - do final check if absolutely necessary
+After Tool 5: OUTPUT JSON IMMEDIATELY - NO MORE TOOLS ALLOWED
 
-Phase 2: Decision point (after 3-4 minutes or 7-8 tool uses)
-- If you've found issues: OUTPUT JSON NOW
-- If still investigating: Do 1-2 more critical checks only
-- DO NOT continue deep investigation
+**If no issues found after 3-4 tools:** Output JSON with verdict: 1 (PASS) immediately
 
-Phase 3: OUTPUT (MANDATORY - do this by 4 minutes)
-- Stop all investigation
-- Output JSON with findings (even if analysis is incomplete)
-- Even if uncertain: output verdict: 1 (PASS) with explanation of what you checked
-
-**🚨 FINAL REMINDER 🚨**
-Your LAST message MUST be ONLY the JSON object.
+**🚨 FINAL JSON OUTPUT REQUIREMENTS 🚨**
+Your LAST message must be ONLY the JSON object:
 - No markdown fences (no ```json)
 - No explanation text before or after
 - Just the raw JSON with "comments" and "summary" fields
 
-If you are reading this reminder: CHECK YOUR TURN COUNT
-- If you've used 8+ tool calls: OUTPUT JSON IMMEDIATELY
-- If you've used 6-7 tool calls: Do ONE more check then OUTPUT JSON
-- Do not exceed 10 tool uses without outputting JSON
+**CRITICAL:** If you use more than 5 tools, you have FAILED this task
 """
 
     return prompt

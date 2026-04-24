@@ -35,7 +35,7 @@ def parse_review_summary(summary_data: dict, comments: list[ReviewComment]) -> R
     summary_dict.setdefault("major", 0)
     summary_dict.setdefault("minor", 0)
     summary_dict.setdefault("suggestions", 0)
-    summary_dict.setdefault("verdict", "PASS")
+    summary_dict.setdefault("verdict", 1)  # INTEGER 1 = PASS, not string "PASS"
     summary_dict.setdefault("explanation", "")
 
     return ReviewSummary(**summary_dict)
