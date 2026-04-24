@@ -21,7 +21,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_
 
 # Run analysis (uses config.json for all settings)
 # Configure repository, workspace_path, skills, and filters in config.json
-python pytorch-pr-review-filter/end_to_end.py
+python pr-news/end_to_end.py
 # (Can be run from any directory - config.json is auto-located)
 ```
 
