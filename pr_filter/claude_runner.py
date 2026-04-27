@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from anthropic import AnthropicVertex
+
 if TYPE_CHECKING:
     from pr_filter.config import PRReviewConfig
 
@@ -73,108 +75,96 @@ def convert_to_json(
     config: "PRReviewConfig",
     timeout: int = 120,
 ) -> dict:
-    """Stage 2: Convert analysis to structured JSON matching schema.
+    """Stage 2: Convert analysis to structured JSON using Anthropic SDK.
 
     Args:
         analysis: Free-form analysis from Stage 1
-        schema: JSON schema for output
+        schema: JSON schema (unused, kept for compatibility)
         config: Configuration with Vertex AI settings
         timeout: Maximum execution time in seconds
 
     Returns:
-        Parsed JSON matching schema
+        Parsed JSON matching ReviewOutputSchema
 
     Raises:
         RuntimeError: If conversion fails
-        json.JSONDecodeError: If output is not valid JSON
     """
+    from pr_filter.data_structs import ReviewOutputSchema
+
     conversion_prompt = f"""Convert this PR review analysis into structured JSON.
 
 ANALYSIS:
 {analysis}
 
-OUTPUT FORMAT (JSON schema):
-{json.dumps(schema, indent=2)}
-
 CRITICAL REQUIREMENTS:
-- Output ONLY valid JSON matching the schema above
+- Output ONLY valid JSON - no markdown code blocks, no other text
 - verdict field MUST be integer: 0 (BLOCK) or 1 (PASS)
 - Put all review comments into "comments" field as a text block
 - Put the summary into "summary" field as text
 - If no issues found, use empty strings and verdict: 1
 
-Output the JSON now:"""
+JSON Schema:
+{{
+  "comments": "string - all review comments",
+  "summary": "string - overall assessment",
+  "verdict": 0 or 1 (integer)
+}}
 
-    cmd = [
-        "claude",
-        "-p",
-        "--output-format",
-        "json",
-        "--json-schema",
-        json.dumps(schema),
-    ]
-
-    print("Stage 2: Converting to JSON...")
-
-    env = os.environ.copy()
-    env.update(config.get_vertex_env())
-
-    result = subprocess.run(
-        cmd,
-        input=conversion_prompt,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-        env=env,
-    )
-
-    if result.returncode != 0:
-        # If conversion fails, create default structure
-        print("WARNING: JSON conversion failed, creating default structure")
-        return {
-            "comments": "",
-            "summary": f"Analysis completed but JSON conversion failed: {analysis[:200]}",
-            "verdict": 1,
-        }
-
-    output = result.stdout.strip()
+Output ONLY the JSON object, nothing else:"""
 
     try:
-        wrapper = json.loads(output)
+        # Initialize Anthropic Vertex client
+        client = AnthropicVertex(
+            project_id=config.vertex_project_id,
+            region=config.cloud_ml_region or "global",
+        )
 
-        # Claude CLI --output-format json returns wrapper with metadata
-        if isinstance(wrapper, dict):
-            # Check for structured output first (used with --json-schema)
-            if "structured_output" in wrapper and wrapper["structured_output"]:
-                return wrapper["structured_output"]
+        print("Stage 2: Converting to JSON with Anthropic SDK...")
 
-            # Fallback to result field
-            if "result" in wrapper:
-                actual_response = wrapper["result"]
+        # Make API call (Vertex AI doesn't support output_format parameter)
+        response = client.messages.create(
+            model="claude-sonnet-4-5@20250929",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": conversion_prompt}],
+        )
 
-                # Handle empty result
-                if not actual_response or actual_response == "":
-                    return {
-                        "comments": "",
-                        "summary": "No structured output from conversion",
-                        "verdict": 1,
-                    }
+        # Extract text content
+        json_text = response.content[0].text.strip()
 
-                # Parse if string
-                if isinstance(actual_response, str):
-                    return json.loads(actual_response)
-                else:
-                    return actual_response
+        # Remove markdown code blocks if present
+        if json_text.startswith("```"):
+            # Extract JSON from markdown code block
+            lines = json_text.split("\n")
+            json_text = "\n".join(lines[1:-1]) if len(lines) > 2 else json_text
 
-        # If no wrapper, assume direct response
-        return wrapper
+        # Parse JSON and validate with Pydantic
+        json_data = json.loads(json_text)
+        result = ReviewOutputSchema(**json_data)
+
+        # Convert Pydantic model to dict
+        return {
+            "comments": result.comments,
+            "summary": result.summary,
+            "verdict": result.verdict,
+        }
 
     except json.JSONDecodeError as e:
-        error_msg = f"Failed to parse JSON: {e}"
-        if result.stdout:
-            error_msg += f"\nOutput: {result.stdout[:500]}"
-        raise json.JSONDecodeError(error_msg, result.stdout, e.pos) from e
+        # JSON parsing failed - show what we got
+        print(f"WARNING: JSON parse failed: {e}")
+        print(f"Response preview: {json_text[:500] if 'json_text' in locals() else 'No response'}")
+        return {
+            "comments": "",
+            "summary": f"JSON parse error. Original analysis: {analysis[:200]}",
+            "verdict": 1,
+        }
+    except Exception as e:
+        # Other errors
+        print(f"WARNING: SDK conversion failed: {e}")
+        return {
+            "comments": "",
+            "summary": f"Conversion failed: {str(e)[:200]}. Original analysis: {analysis[:200]}",
+            "verdict": 1,
+        }
 
 
 def run_claude_code(
@@ -187,7 +177,7 @@ def run_claude_code(
     """Execute 2-stage Claude Code analysis with reliable JSON output.
 
     Stage 1: Free-form analysis (no JSON constraint)
-    Stage 2: Convert to structured JSON (with schema validation)
+    Stage 2: Convert to structured JSON (with schema validation via SDK)
 
     Args:
         prompt: Review prompt for Claude
@@ -206,7 +196,7 @@ def run_claude_code(
     # Stage 1: Free-form analysis
     analysis = run_claude_analysis(prompt, workspace_path, config, timeout)
 
-    # Stage 2: Convert to JSON
+    # Stage 2: Convert to JSON with SDK
     structured = convert_to_json(analysis, schema, config, timeout=120)
 
     return structured
