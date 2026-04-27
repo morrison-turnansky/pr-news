@@ -28,22 +28,20 @@ def test_review_comment_schema_valid():
     assert comment.verdict == Verdict.BLOCK
 
 
-def test_review_comment_schema_invalid_severity():
-    """Test that invalid severity value is rejected."""
-    invalid_data = {
+def test_review_comment_accepts_any_severity():
+    """Test that severity field accepts any string (no pattern constraint)."""
+    # Patterns are not supported by Claude structured outputs
+    # We accept any string and rely on Claude to follow instructions
+    data = {
         "file": "test.py",
         "line": 1,
-        "severity": "invalid_severity",  # Not in pattern
+        "severity": "custom_severity",
         "category": "correctness",
         "message": "Test",
-        "verdict": 1,  # Integer: 1 = PASS
+        "verdict": 1,
     }
-
-    with pytest.raises(ValidationError) as exc_info:
-        ReviewComment(**invalid_data)
-
-    # Verify the error mentions the severity field
-    assert "severity" in str(exc_info.value)
+    comment = ReviewComment(**data)
+    assert comment.severity == "custom_severity"
 
 
 def test_review_comment_schema_invalid_verdict():
@@ -63,21 +61,19 @@ def test_review_comment_schema_invalid_verdict():
     assert "verdict" in str(exc_info.value)
 
 
-def test_review_comment_schema_negative_line():
-    """Test that negative line numbers are rejected."""
-    invalid_data = {
+def test_review_comment_accepts_any_line():
+    """Test that line field accepts any integer (no minimum constraint)."""
+    # Minimum constraints are not supported by Claude structured outputs
+    data = {
         "file": "test.py",
-        "line": -1,  # Must be >= 0
+        "line": -1,
         "severity": "critical",
         "category": "correctness",
         "message": "Test",
         "verdict": 0,
     }
-
-    with pytest.raises(ValidationError) as exc_info:
-        ReviewComment(**invalid_data)
-
-    assert "line" in str(exc_info.value)
+    comment = ReviewComment(**data)
+    assert comment.line == -1
 
 
 def test_review_comment_schema_optional_suggestion():
@@ -114,75 +110,50 @@ def test_review_summary_schema_valid():
     assert summary.verdict == Verdict.BLOCK
 
 
-def test_review_summary_schema_negative_counts():
-    """Test that negative issue counts are rejected."""
-    invalid_data = {
-        "total_issues": -1,  # Must be >= 0
+def test_review_summary_accepts_any_counts():
+    """Test that count fields accept any integer (no minimum constraint)."""
+    # Minimum constraints are not supported by Claude structured outputs
+    data = {
+        "total_issues": -1,
         "critical": 0,
         "major": 0,
         "minor": 0,
         "suggestions": 0,
-        "verdict": 1,  # Integer: 1 = PASS
+        "verdict": 1,
         "explanation": "Test",
     }
-
-    with pytest.raises(ValidationError) as exc_info:
-        ReviewSummary(**invalid_data)
-
-    assert "total_issues" in str(exc_info.value)
+    summary = ReviewSummary(**data)
+    assert summary.total_issues == -1
 
 
 def test_review_output_schema_valid():
-    """Test that valid complete review output passes validation."""
+    """Test that valid complete review output passes validation (simplified schema)."""
     valid_data = {
-        "comments": [
-            {
-                "file": "test.py",
-                "line": 42,
-                "severity": "critical",
-                "category": "correctness",
-                "message": "Bug found",
-                "verdict": 0,  # Integer: 0 = BLOCK
-            }
-        ],
-        "summary": {
-            "total_issues": 1,
-            "critical": 1,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 0,  # Integer: 0 = BLOCK
-            "explanation": "Critical bug detected",
-        },
+        "comments": "Critical issue in test.py:42 - Bug found",
+        "summary": "Critical bug detected",
+        "verdict": 0,  # Integer: 0 = BLOCK
     }
 
     output = ReviewOutputSchema(**valid_data)
-    assert len(output.comments) == 1
-    assert output.summary.verdict == Verdict.BLOCK
+    assert "Bug found" in output.comments
+    assert output.verdict == 0
 
 
 def test_review_output_schema_empty_comments():
-    """Test that empty comments list is valid."""
+    """Test that empty comments string is valid (simplified schema)."""
     valid_data = {
-        "comments": [],  # Empty list is valid
-        "summary": {
-            "total_issues": 0,
-            "critical": 0,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 1,  # Integer: 1 = PASS
-            "explanation": "No issues",
-        },
+        "comments": "",  # Empty string is valid
+        "summary": "No issues",
+        "verdict": 1,  # Integer: 1 = PASS
     }
 
     output = ReviewOutputSchema(**valid_data)
-    assert len(output.comments) == 0
-    assert output.summary.verdict == Verdict.PASS
+    assert output.comments == ""
+    assert output.verdict == 1
 
 
 def test_get_review_json_schema_structure():
-    """Test that generated JSON schema has expected structure."""
+    """Test that generated JSON schema has expected structure (simplified schema)."""
     schema = get_review_json_schema()
 
     # Should be a dict with standard JSON Schema fields
@@ -194,15 +165,12 @@ def test_get_review_json_schema_structure():
     assert "properties" in schema
     assert "comments" in schema["properties"]
     assert "summary" in schema["properties"]
+    assert "verdict" in schema["properties"]
 
-    # Should have required fields
-    assert "required" in schema
-    assert "summary" in schema["required"]
-
-    # Should have definitions for nested objects
-    assert "$defs" in schema
-    assert "ReviewComment" in schema["$defs"]
-    assert "ReviewSummary" in schema["$defs"]
+    # Verify field types
+    assert schema["properties"]["comments"]["type"] == "string"
+    assert schema["properties"]["summary"]["type"] == "string"
+    assert schema["properties"]["verdict"]["type"] == "integer"
 
 
 def test_get_review_json_schema_serializable():
@@ -218,67 +186,21 @@ def test_get_review_json_schema_serializable():
     assert parsed == schema
 
 
-def test_review_comment_schema_has_patterns():
-    """Test that schema includes regex patterns for validation."""
+def test_review_output_schema_verdict_is_integer():
+    """Test that verdict is an integer type (simplified schema)."""
     schema = get_review_json_schema()
 
-    # Get ReviewComment definition
-    comment_schema = schema["$defs"]["ReviewComment"]
-
-    # Should have pattern for severity
-    assert "pattern" in comment_schema["properties"]["severity"]
-    assert "critical|major|minor|suggestion" in comment_schema["properties"]["severity"]["pattern"]
-
-    # Should have pattern for category
-    assert "pattern" in comment_schema["properties"]["category"]
-    assert (
-        "correctness|performance|security|style"
-        in comment_schema["properties"]["category"]["pattern"]
-    )
-
-    # Verdict should be a reference to the Verdict enum (integer enum)
-    assert "$ref" in comment_schema["properties"]["verdict"]
-    assert comment_schema["properties"]["verdict"]["$ref"] == "#/$defs/Verdict"
-
-    # Verify Verdict enum definition
-    verdict_schema = schema["$defs"]["Verdict"]
-    assert verdict_schema["type"] == "integer"
-    assert verdict_schema["enum"] == [0, 1]
-
-
-def test_review_summary_schema_has_minimum():
-    """Test that schema includes minimum constraints for integers."""
-    schema = get_review_json_schema()
-
-    # Get ReviewSummary definition
-    summary_schema = schema["$defs"]["ReviewSummary"]
-
-    # Should have minimum: 0 for all count fields
-    for field in ["total_issues", "critical", "major", "minor", "suggestions"]:
-        assert "minimum" in summary_schema["properties"][field]
-        assert summary_schema["properties"][field]["minimum"] == 0
-
-
-def test_review_comment_schema_line_has_minimum():
-    """Test that line field has minimum constraint."""
-    schema = get_review_json_schema()
-
-    comment_schema = schema["$defs"]["ReviewComment"]
-    assert "minimum" in comment_schema["properties"]["line"]
-    assert comment_schema["properties"]["line"]["minimum"] == 0
+    # Verdict should be integer type (not enum reference since simplified)
+    verdict_prop = schema["properties"]["verdict"]
+    assert verdict_prop["type"] == "integer"
+    assert verdict_prop["default"] == 1
 
 
 def test_schema_has_descriptions():
-    """Test that schema includes field descriptions."""
+    """Test that schema includes field descriptions (simplified schema)."""
     schema = get_review_json_schema()
 
-    comment_schema = schema["$defs"]["ReviewComment"]
-    summary_schema = schema["$defs"]["ReviewSummary"]
-
-    # Comment fields should have descriptions
-    assert "description" in comment_schema["properties"]["file"]
-    assert "description" in comment_schema["properties"]["message"]
-
-    # Summary fields should have descriptions
-    assert "description" in summary_schema["properties"]["verdict"]
-    assert "description" in summary_schema["properties"]["explanation"]
+    # Output schema fields should have descriptions
+    assert "description" in schema["properties"]["comments"]
+    assert "description" in schema["properties"]["summary"]
+    assert "description" in schema["properties"]["verdict"]

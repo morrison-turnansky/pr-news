@@ -4,12 +4,7 @@ from pr_filter.claude_runner import run_claude_code
 from pr_filter.config import PRReviewConfig
 from pr_filter.data_structs import PullRequest, ReviewResult
 from pr_filter.prompts import build_review_prompt, get_review_json_schema
-from pr_filter.review_parser import (
-    create_error_result,
-    determine_overall_verdict,
-    parse_review_comments,
-    parse_review_summary,
-)
+from pr_filter.review_parser import create_error_result
 
 
 def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
@@ -35,9 +30,11 @@ def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
 
     try:
         output = run_claude_code(prompt, config.workspace_path, schema, config, timeout=500)
-        comments = parse_review_comments(output.get("comments", []))
-        summary = parse_review_summary(output.get("summary", {}), comments)
-        overall_verdict = determine_overall_verdict(summary.verdict, comments)
+
+        # Extract fields from simplified schema
+        comments = output.get("comments", "")
+        summary = output.get("summary", "")
+        verdict = output.get("verdict", 1)  # Default to PASS
 
         return ReviewResult(
             pr_number=pr.pr_number,
@@ -49,7 +46,7 @@ def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
             files_changed=pr.files_changed,
             comments=comments,
             summary=summary,
-            verdict=overall_verdict,
+            verdict=verdict,
         )
 
     except Exception as e:

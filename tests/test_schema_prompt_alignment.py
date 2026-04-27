@@ -1,5 +1,5 @@
 """
-Comprehensive verification that schema and prompt are fully aligned.
+Comprehensive verification that schema and prompt are fully aligned (simplified schema).
 
 This test ensures:
 1. Schema expects integers for verdict (0=BLOCK, 1=PASS)
@@ -15,17 +15,17 @@ import json
 import re
 from datetime import datetime
 
-from pr_filter.data_structs import PullRequest, ReviewOutputSchema, Verdict
+from pr_filter.data_structs import PullRequest, ReviewOutputSchema
 from pr_filter.prompts import build_review_prompt, get_review_json_schema
 
 
 def test_schema_verdict_is_integer():
-    """Verify schema defines verdict as integer enum."""
+    """Verify schema defines verdict as integer."""
     schema = get_review_json_schema()
-    verdict_def = schema.get("$defs", {}).get("Verdict", {})
+    verdict_prop = schema["properties"]["verdict"]
 
-    assert verdict_def["type"] == "integer", "Verdict type should be integer"
-    assert verdict_def["enum"] == [0, 1], "Verdict enum should be [0, 1]"
+    assert verdict_prop["type"] == "integer", "Verdict type should be integer"
+    assert verdict_prop["default"] == 1, "Verdict default should be 1 (PASS)"
 
 
 def test_prompt_instructs_integers():
@@ -59,7 +59,7 @@ def test_prompt_instructs_integers():
 
 
 def test_prompt_example_uses_integers():
-    """Verify prompt JSON example uses integer verdicts."""
+    """Verify prompt JSON example uses integer verdict (simplified schema)."""
     now = datetime.now()
     pr = PullRequest(
         pr_number=12345,
@@ -81,23 +81,14 @@ def test_prompt_example_uses_integers():
     json_str = match.group(1).replace("{{", "{").replace("}}", "}")
     example = json.loads(json_str)
 
-    # Check verdict values are integers
-    summary_verdict = example["summary"]["verdict"]
-    assert isinstance(
-        summary_verdict, int
-    ), f"Summary verdict should be int, got {type(summary_verdict)}"
-    assert summary_verdict in [0, 1], f"Summary verdict should be 0 or 1, got {summary_verdict}"
-
-    if example.get("comments"):
-        comment_verdict = example["comments"][0]["verdict"]
-        assert isinstance(
-            comment_verdict, int
-        ), f"Comment verdict should be int, got {type(comment_verdict)}"
-        assert comment_verdict in [0, 1], f"Comment verdict should be 0 or 1, got {comment_verdict}"
+    # Check verdict value is integer
+    verdict = example["verdict"]
+    assert isinstance(verdict, int), f"Verdict should be int, got {type(verdict)}"
+    assert verdict in [0, 1], f"Verdict should be 0 or 1, got {verdict}"
 
 
 def test_prompt_example_validates():
-    """Verify prompt example validates against schema."""
+    """Verify prompt example validates against schema (simplified schema)."""
     now = datetime.now()
     pr = PullRequest(
         pr_number=12345,
@@ -119,8 +110,7 @@ def test_prompt_example_validates():
 
     result = ReviewOutputSchema.model_validate(example)
 
-    assert result.summary.verdict == Verdict.BLOCK, "Example should show BLOCK verdict"
-    assert result.summary.verdict.value == 0, "BLOCK should have value 0"
+    assert result.verdict == 0, "Example should show BLOCK verdict (0)"
 
 
 def test_no_string_verdicts_in_prompt():
@@ -153,7 +143,7 @@ def test_no_string_verdicts_in_prompt():
 
 
 def test_no_ambiguous_field_patterns():
-    """Verify prompt doesn't have ambiguous field value patterns."""
+    """Verify prompt doesn't have ambiguous field value patterns (simplified schema)."""
     now = datetime.now()
     pr = PullRequest(
         pr_number=12345,
@@ -172,64 +162,33 @@ def test_no_ambiguous_field_patterns():
     match = re.search(r"```json\n(\{.*?\})\n```", prompt, re.DOTALL)
     json_example = match.group(1)
 
-    # Check for pipe-separated values (like "critical|major|minor")
-    bad_patterns = [
-        (r'"severity":\s*"[^"]*\|[^"]*"', "severity with pipes"),
-        (r'"category":\s*"[^"]*\|[^"]*"', "category with pipes"),
-    ]
-
-    for pattern, desc in bad_patterns:
-        assert not re.search(pattern, json_example), f"Found {desc} in JSON example"
+    # Check verdict is integer (not string with pipes)
+    assert not re.search(
+        r'"verdict":\s*"[^"]*\|[^"]*"', json_example
+    ), "Found verdict with pipes in JSON example"
 
 
 def test_common_outputs_validate():
-    """Verify common output patterns validate correctly."""
+    """Verify common output patterns validate correctly (simplified schema)."""
     test_cases = [
         (
             "PASS with no issues",
             {
-                "comments": [],
-                "summary": {
-                    "total_issues": 0,
-                    "critical": 0,
-                    "major": 0,
-                    "minor": 0,
-                    "suggestions": 0,
-                    "verdict": 1,
-                    "explanation": "No issues found",
-                },
+                "comments": "",
+                "summary": "No issues found",
+                "verdict": 1,
             },
         ),
         (
             "BLOCK with critical issue",
             {
-                "comments": [
-                    {
-                        "file": "torch/file.py",
-                        "line": 10,
-                        "severity": "critical",
-                        "category": "correctness",
-                        "message": "Bug found",
-                        "suggestion": "Fix it",
-                        "verdict": 0,
-                    }
-                ],
-                "summary": {
-                    "total_issues": 1,
-                    "critical": 1,
-                    "major": 0,
-                    "minor": 0,
-                    "suggestions": 0,
-                    "verdict": 0,
-                    "explanation": "Critical bug found",
-                },
+                "comments": "Critical bug in torch/file.py:10 - Bug found. Fix it.",
+                "summary": "Critical bug found",
+                "verdict": 0,
             },
         ),
     ]
 
     for desc, test_json in test_cases:
         result = ReviewOutputSchema.model_validate(test_json)
-        assert result.summary.verdict in [
-            Verdict.BLOCK,
-            Verdict.PASS,
-        ], f"{desc} should have valid verdict"
+        assert result.verdict in [0, 1], f"{desc} should have valid verdict"

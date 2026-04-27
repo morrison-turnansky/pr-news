@@ -8,7 +8,7 @@ import pytest
 
 from pr_filter.config import PRReviewConfig
 from pr_filter.critique import critique_pr
-from pr_filter.data_structs import PullRequest, ReviewResult, Verdict
+from pr_filter.data_structs import PullRequest, ReviewResult
 
 
 @pytest.fixture
@@ -63,16 +63,9 @@ def test_critique_uses_fresh_agent_per_pr(mock_run_claude, sample_pr, config):
     """
     # Mock Claude Code to return PASS verdict
     mock_run_claude.return_value = {
-        "comments": [],
-        "summary": {
-            "total_issues": 0,
-            "critical": 0,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 1,
-            "explanation": "No issues found",
-        },
+        "comments": "",
+        "summary": "No issues found",
+        "verdict": 1,
     }
 
     # Create 3 PRs
@@ -124,37 +117,20 @@ def test_critique_block_verdict_with_explanation(mock_run_claude, sample_pr, con
     Then: BLOCK verdict with detailed explanation returned
     """
     mock_run_claude.return_value = {
-        "comments": [
-            {
-                "file": "torch/_dynamo/guards.py",
-                "line": 42,
-                "severity": "critical",
-                "category": "correctness",
-                "message": "Guard generation logic fails to account for list mutation",
-                "suggestion": "Add mutation tracking in VariableTracker",
-                "verdict": 0,
-            }
-        ],
-        "summary": {
-            "total_issues": 1,
-            "critical": 1,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 0,
-            "explanation": "Guard generation logic in guards.py line 42 fails to account for list mutation. "
-            "This causes silent wrong results when the cached graph is reused with different list contents.",
-        },
+        "comments": "Critical issue in torch/_dynamo/guards.py:42 - Guard generation logic fails to account for list mutation. "
+        "Add mutation tracking in VariableTracker.",
+        "summary": "Guard generation logic in guards.py line 42 fails to account for list mutation. "
+        "This causes silent wrong results when the cached graph is reused with different list contents.",
+        "verdict": 0,
     }
 
     result = critique_pr(sample_pr, config)
 
     assert isinstance(result, ReviewResult)
-    assert result.verdict == Verdict.BLOCK
-    assert "list mutation" in result.summary.explanation
+    assert result.verdict == 0  # 0 = BLOCK
+    assert "list mutation" in result.summary
     assert result.pr_number == 12345
-    assert len(result.comments) == 1
-    assert result.comments[0].severity == "critical"
+    assert "guards.py" in result.comments
 
 
 @patch.dict(
@@ -174,16 +150,9 @@ def test_critique_pass_verdict_for_safe_change(mock_run_claude, config):
     Then: PASS verdict returned
     """
     mock_run_claude.return_value = {
-        "comments": [],
-        "summary": {
-            "total_issues": 0,
-            "critical": 0,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 1,
-            "explanation": "This is a safe refactoring that improves code clarity without changing behavior.",
-        },
+        "comments": "",
+        "summary": "This is a safe refactoring that improves code clarity without changing behavior.",
+        "verdict": 1,
     }
 
     safe_pr = PullRequest(
@@ -199,8 +168,8 @@ def test_critique_pass_verdict_for_safe_change(mock_run_claude, config):
 
     result = critique_pr(safe_pr, config)
 
-    assert result.verdict == Verdict.PASS
-    assert result.summary.total_issues == 0
+    assert result.verdict == 1  # 1 = PASS
+    assert result.comments == ""
 
 
 @patch.dict(
@@ -220,16 +189,9 @@ def test_critique_default_pass_on_uncertainty(mock_run_claude, config):
     Then: PASS verdict (default behavior when uncertain)
     """
     mock_run_claude.return_value = {
-        "comments": [],
-        "summary": {
-            "total_issues": 0,
-            "critical": 0,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 1,
-            "explanation": "Cannot determine if this change introduces issues. Default to PASS.",
-        },
+        "comments": "",
+        "summary": "Cannot determine if this change introduces issues. Default to PASS.",
+        "verdict": 1,
     }
 
     ambiguous_pr = PullRequest(
@@ -245,7 +207,7 @@ def test_critique_default_pass_on_uncertainty(mock_run_claude, config):
 
     result = critique_pr(ambiguous_pr, config)
 
-    assert result.verdict == Verdict.PASS
+    assert result.verdict == 1  # 1 = PASS
 
 
 @patch.dict(
@@ -265,42 +227,21 @@ def test_critique_explanation_format(mock_run_claude, sample_pr, config):
     Then: Comments include file, line, severity, category, message
     """
     mock_run_claude.return_value = {
-        "comments": [
-            {
-                "file": "torch/_dynamo/guards.py",
-                "line": 42,
-                "severity": "critical",
-                "category": "correctness",
-                "message": "Modified guard generation to skip list mutation checks. "
-                "Guard misses when VariableTracker wraps a mutated list. "
-                "This fails when a VariableTracker wraps a list that gets mutated after guard creation.",
-                "suggestion": "Add mutation tracking",
-                "verdict": 0,
-            }
-        ],
-        "summary": {
-            "total_issues": 1,
-            "critical": 1,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 0,
-            "explanation": "Critical correctness bug in guard generation",
-        },
+        "comments": "Critical issue in torch/_dynamo/guards.py:42 - Modified guard generation to skip list mutation checks. "
+        "Guard misses when VariableTracker wraps a mutated list. "
+        "This fails when a VariableTracker wraps a list that gets mutated after guard creation. "
+        "Suggestion: Add mutation tracking",
+        "summary": "Critical correctness bug in guard generation",
+        "verdict": 0,
     }
 
     result = critique_pr(sample_pr, config)
 
-    assert result.verdict == Verdict.BLOCK
-    assert len(result.comments) == 1
-    comment = result.comments[0]
-
-    # Check structured comment fields
-    assert comment.file == "torch/_dynamo/guards.py"
-    assert comment.line == 42
-    assert comment.severity == "critical"
-    assert comment.category == "correctness"
-    assert "Guard misses" in comment.message
+    assert result.verdict == 0  # 0 = BLOCK
+    # Check comments contain key information
+    assert "guards.py" in result.comments
+    assert "42" in result.comments
+    assert "Guard misses" in result.comments
 
 
 @patch.dict(
@@ -322,16 +263,9 @@ def test_critique_loads_skills(mock_run_claude, sample_pr, config):
     config.skill_paths = ["skill1.md", "skill2.md"]
 
     mock_run_claude.return_value = {
-        "comments": [],
-        "summary": {
-            "total_issues": 0,
-            "critical": 0,
-            "major": 0,
-            "minor": 0,
-            "suggestions": 0,
-            "verdict": 1,
-            "explanation": "No issues found",
-        },
+        "comments": "",
+        "summary": "No issues found",
+        "verdict": 1,
     }
 
     critique_pr(sample_pr, config)

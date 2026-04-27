@@ -75,12 +75,12 @@ class ReviewComment(BaseModel):
     """Structured review comment for a specific file/line."""
 
     file: str = Field(..., description="Relative file path from repository root")
-    line: int = Field(..., description="Line number in the file", ge=0)
+    line: int = Field(..., description="Line number in the file")
     severity: str = Field(
-        ..., description="Issue severity level", pattern="^(critical|major|minor|suggestion)$"
+        ..., description="Issue severity level: critical, major, minor, or suggestion"
     )
     category: str = Field(
-        ..., description="Issue category", pattern="^(correctness|performance|security|style)$"
+        ..., description="Issue category: correctness, performance, security, or style"
     )
     message: str = Field(..., description="Detailed description of the issue")
     suggestion: str = Field(default="", description="Optional fix suggestion")
@@ -90,17 +90,17 @@ class ReviewComment(BaseModel):
 class ReviewSummary(BaseModel):
     """Summary statistics for a PR review."""
 
-    total_issues: int = Field(..., description="Total number of issues found", ge=0)
-    critical: int = Field(..., description="Number of critical issues", ge=0)
-    major: int = Field(..., description="Number of major issues", ge=0)
-    minor: int = Field(..., description="Number of minor issues", ge=0)
-    suggestions: int = Field(..., description="Number of suggestions", ge=0)
-    verdict: Verdict = Field(..., description="Overall verdict")
-    explanation: str = Field(..., description="Overall assessment of the PR")
+    total_issues: int = Field(default=0, description="Total number of issues found")
+    critical: int = Field(default=0, description="Number of critical issues")
+    major: int = Field(default=0, description="Number of major issues")
+    minor: int = Field(default=0, description="Number of minor issues")
+    suggestions: int = Field(default=0, description="Number of suggestions")
+    verdict: Verdict = Field(default=Verdict.PASS, description="Overall verdict")
+    explanation: str = Field(default="", description="Overall assessment of the PR")
 
 
 class ReviewResult(BaseModel):
-    """Structured review result from Claude Code agent."""
+    """Structured review result from Claude Code agent (simplified)."""
 
     pr_number: int
     title: str
@@ -109,14 +109,14 @@ class ReviewResult(BaseModel):
     created_at: datetime
     updated_at: datetime
     files_changed: list[str]
-    comments: list[ReviewComment]
-    summary: ReviewSummary
-    verdict: Verdict
+    comments: str
+    summary: str
+    verdict: int
 
     @property
     def has_critical_issue(self) -> bool:
         """True if verdict is BLOCK."""
-        return self.verdict == Verdict.BLOCK
+        return self.verdict == 0  # 0 = BLOCK
 
 
 class ModelParams(BaseModel):
@@ -180,9 +180,8 @@ class PRReviewConfig(BaseModel):
 
 
 class ReviewOutputSchema(BaseModel):
-    """Schema for complete Claude Code review output."""
+    """Schema for complete Claude Code review output (simplified for reliability)."""
 
-    comments: list[ReviewComment] = Field(
-        default_factory=list, description="List of review comments"
-    )
-    summary: ReviewSummary = Field(..., description="Review summary statistics")
+    comments: str = Field(default="", description="Review comments as text block")
+    summary: str = Field(default="", description="Summary of the review as text")
+    verdict: int = Field(default=1, description="Overall verdict: 0 for BLOCK, 1 for PASS")

@@ -51,7 +51,7 @@ def fetch_prs(
 
     all_prs = []
 
-    with GitHubClient(token=github_token, repo=filter_criteria.repo) as client:
+    with GitHubClient(token=github_token, repos=[filter_criteria.repo]) as client:
         pr_reviews = client.get_prs_by_filter(
             authors=filter_criteria.authors,
             labels=filter_criteria.labels,
@@ -71,7 +71,7 @@ def fetch_prs(
             )
 
             try:
-                diff = client.get_pr_diff(pr.number)
+                diff = client.get_pr_diff(filter_criteria.repo, pr.number)
             except Exception as e:
                 print(f"  WARNING: Failed to fetch diff for PR #{pr.number}: {e}")
                 diff = ""
