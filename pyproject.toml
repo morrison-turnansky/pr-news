@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.0.0",
-    "pytorch-jira-bot",
+    "pytorch-jira-bot @ git+ssh://git@github.com/adabeyta/pytorch-jira-bot.git",
+
 ]
 
 [project.optional-dependencies]
