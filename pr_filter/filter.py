@@ -57,6 +57,9 @@ def fetch_prs(
             labels=filter_criteria.labels,
             created_after=filter_criteria.created_after,
             created_before=filter_criteria.created_before,
+            is_merged=filter_criteria.is_merged,
+            is_open=filter_criteria.is_open,
+            is_draft=filter_criteria.is_draft,
         )
 
         for i, pr_review in enumerate(pr_reviews, 1):

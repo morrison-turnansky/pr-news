@@ -30,7 +30,7 @@ Use explicit module imports (e.g., `from pr_filter.config import load_config`) r
 └─────────────┘          │
                          ▼
                   ┌──────────────┐
-                  │  PR Filter   │ Filter by label, author, date
+                  │  PR Filter   │ Filter by label, author, date, merge/open/draft status
                   │  (filter.py) │
                   └──────┬───────┘
                          │
@@ -81,7 +81,7 @@ Shows the order files are called during a typical PR review run:
 
 **2. Fetch PRs**
 - **filter.py** - `fetch_prs()` queries GitHub API
-  - Filters by label, author, date range
+  - Filters by label, author, date range, merge status, open status, draft status
   - Returns list of `PullRequest` objects with diffs
 
 **3. Review Each PR** (loop - fresh agent per PR)
@@ -154,7 +154,10 @@ Both repository and workspace paths must be specified in `config.json`:
   ],
   "filter": {
     "labels": ["module: dynamo"],
-    "days_back": 1
+    "days_back": 1,
+    "is_merged": null,
+    "is_open": null,
+    "is_draft": null
   }
 }
 ```
@@ -170,7 +173,10 @@ Minimal configuration without skills:
   "workspace_path": "/path/to/local/clone",
   "filter": {
     "labels": ["bug"],
-    "days_back": 7
+    "days_back": 7,
+    "is_merged": null,
+    "is_open": null,
+    "is_draft": null
   }
 }
 ```
@@ -179,7 +185,7 @@ Load with: `config = load_config("config.json")`
 
 ## Review Process
 
-1. **Fetch** - Query GitHub API for PRs matching filter (label, author, date)
+1. **Fetch** - Query GitHub API for PRs matching filter (label, author, date, merge/open/draft status)
 2. **Critique** - For each PR:
    - Build prompt with diff + optional domain-specific skills
    - Execute `claude -p --output-format json --json-schema <schema>`

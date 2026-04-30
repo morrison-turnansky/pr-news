@@ -46,6 +46,9 @@ class PRFilter(BaseModel):
     created_after: datetime | None = None
     created_before: datetime | None = None
     repo: str = ""
+    is_merged: bool | None = None
+    is_open: bool | None = None
+    is_draft: bool | None = None
 
 
 class PullRequest(BaseModel):

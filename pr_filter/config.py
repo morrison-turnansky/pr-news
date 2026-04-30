@@ -42,6 +42,9 @@ def load_config(config_path: str) -> PRReviewConfig:
         labels=filter_dict.get("labels"),
         created_after=created_after,
         created_before=created_before,
+        is_merged=filter_dict.get("is_merged"),
+        is_open=filter_dict.get("is_open"),
+        is_draft=filter_dict.get("is_draft"),
     )
 
     # Get skill_paths if provided (defaults to [] if not present or None)

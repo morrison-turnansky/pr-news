@@ -68,6 +68,18 @@ def main():
     print(f"Labels: {filter_criteria.labels}")
     created_after_str = filter_criteria.created_after.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Created after: {created_after_str}")
+
+    # Display active boolean filters
+    if filter_criteria.is_merged is not None:
+        status = "merged only" if filter_criteria.is_merged else "unmerged only"
+        print(f"Merge status: {status}")
+    if filter_criteria.is_open is not None:
+        status = "open only" if filter_criteria.is_open else "closed only"
+        print(f"Open status: {status}")
+    if filter_criteria.is_draft is not None:
+        status = "drafts only" if filter_criteria.is_draft else "non-drafts only"
+        print(f"Draft status: {status}")
+
     print()
 
     # Step 1: Fetch PRs

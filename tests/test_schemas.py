@@ -5,7 +5,13 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from pr_filter.data_structs import ReviewComment, ReviewOutputSchema, ReviewSummary, Verdict
+from pr_filter.data_structs import (
+    PRFilter,
+    ReviewComment,
+    ReviewOutputSchema,
+    ReviewSummary,
+    Verdict,
+)
 from pr_filter.prompts import get_review_json_schema
 
 
@@ -204,3 +210,26 @@ def test_schema_has_descriptions():
     assert "description" in schema["properties"]["comments"]
     assert "description" in schema["properties"]["summary"]
     assert "description" in schema["properties"]["verdict"]
+
+
+def test_pr_filter_with_boolean_fields():
+    """Verify PRFilter accepts is_merged, is_open, is_draft booleans."""
+    # Test all three fields
+    filter_specific = PRFilter(
+        repo="pytorch/pytorch", is_merged=True, is_open=False, is_draft=False
+    )
+    assert filter_specific.is_merged is True
+    assert filter_specific.is_open is False
+    assert filter_specific.is_draft is False
+
+    # Test with None (default - matches all)
+    filter_all = PRFilter(is_merged=None, is_open=None, is_draft=None)
+    assert filter_all.is_merged is None
+    assert filter_all.is_open is None
+    assert filter_all.is_draft is None
+
+    # Test partial specification
+    filter_partial = PRFilter(is_merged=True)
+    assert filter_partial.is_merged is True
+    assert filter_partial.is_open is None
+    assert filter_partial.is_draft is None

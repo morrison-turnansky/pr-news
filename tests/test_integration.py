@@ -71,3 +71,42 @@ def test_config_loading(test_config):
     assert config.repository == "pytorch/pytorch"
     assert len(config.skill_paths) > 0
     assert config.filter_config.repo == "pytorch/pytorch"
+
+
+def test_load_config_with_boolean_filters(tmp_path):
+    """Verify config loads all boolean filters correctly."""
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "repository": "pytorch/pytorch",
+                "workspace_path": "/workspace/test",
+                "filter": {
+                    "labels": ["bug"],
+                    "is_merged": False,
+                    "is_open": True,
+                    "is_draft": False,
+                },
+            }
+        )
+    )
+
+    config = load_config(str(config_file))
+    assert config.filter_config.is_merged is False
+    assert config.filter_config.is_open is True
+    assert config.filter_config.is_draft is False
+
+    # Test with None values
+    config_file2 = tmp_path / "config2.json"
+    config_file2.write_text(
+        json.dumps(
+            {
+                "repository": "pytorch/pytorch",
+                "workspace_path": "/workspace/test",
+                "filter": {"is_merged": None},
+            }
+        )
+    )
+
+    config2 = load_config(str(config_file2))
+    assert config2.filter_config.is_merged is None

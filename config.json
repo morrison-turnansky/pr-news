@@ -16,6 +16,12 @@
     "_authors_comment": "Authors to filter by (null = all authors)",
     "authors": null,
     "_dates_comment": "Date range in days (e.g., 1 = last 1 day, 7 = last week). Set to null to disable date filtering",
-    "days_back": 1
+    "days_back": 1,
+    "_is_merged_comment": "Filter by merge status: true (merged only), false (unmerged only), null (all PRs)",
+    "is_merged": null,
+    "_is_open_comment": "Filter by open/closed status: true (open only), false (closed only), null (all PRs)",
+    "is_open": true,
+    "_is_draft_comment": "Filter by draft status: true (drafts only), false (non-drafts only), null (all PRs)",
+    "is_draft": false
   }
 }
