@@ -10,6 +10,7 @@ from anthropic import AnthropicVertex
 
 if TYPE_CHECKING:
     from pr_filter.config import PRReviewConfig
+    from pr_filter.data_structs import ReviewOutputSchema
 
 
 def run_claude_analysis(
@@ -71,25 +72,24 @@ def run_claude_analysis(
 
 def convert_to_json(
     analysis: str,
-    schema: dict,
     config: "PRReviewConfig",
-    timeout: int = 120,
-) -> dict:
+) -> "ReviewOutputSchema":
     """Stage 2: Convert analysis to structured JSON using Anthropic SDK.
+
+    Note: Vertex AI does not support structured outputs (output_config parameter).
+    Uses prompt engineering to request JSON format instead.
 
     Args:
         analysis: Free-form analysis from Stage 1
-        schema: JSON schema (unused, kept for compatibility)
         config: Configuration with Vertex AI settings
-        timeout: Maximum execution time in seconds
 
     Returns:
-        Parsed JSON matching ReviewOutputSchema
-
-    Raises:
-        RuntimeError: If conversion fails
+        ReviewOutputSchema (on error, summary contains error message)
     """
     from pr_filter.data_structs import ReviewOutputSchema
+
+    # Get JSON schema for reference in prompt
+    json_schema = ReviewOutputSchema.model_json_schema(mode="validation")
 
     conversion_prompt = f"""Convert this PR review analysis into structured JSON.
 
@@ -97,20 +97,14 @@ ANALYSIS:
 {analysis}
 
 CRITICAL REQUIREMENTS:
-- Output ONLY valid JSON - no markdown code blocks, no other text
+- Output ONLY valid JSON - no markdown code blocks, no explanatory text
+- Match this exact schema: {json.dumps(json_schema, indent=2)}
 - verdict field MUST be integer: 0 (BLOCK) or 1 (PASS)
-- Put all review comments into "comments" field as a text block
-- Put the summary into "summary" field as text
+- Put all review comments into "comments" field as text
+- Put overall assessment into "summary" field as text
 - If no issues found, use empty strings and verdict: 1
 
-JSON Schema:
-{{
-  "comments": "string - all review comments",
-  "summary": "string - overall assessment",
-  "verdict": 0 or 1 (integer)
-}}
-
-Output ONLY the JSON object, nothing else:"""
+Output the JSON object now:"""
 
     try:
         # Initialize Anthropic Vertex client
@@ -119,52 +113,57 @@ Output ONLY the JSON object, nothing else:"""
             region=config.cloud_ml_region or "global",
         )
 
-        print("Stage 2: Converting to JSON with Anthropic SDK...")
+        print("Stage 2: Converting to JSON via prompt engineering...")
 
-        # Make API call (Vertex AI doesn't support output_format parameter)
+        # Make API call without structured outputs (not supported on Vertex AI)
         response = client.messages.create(
             model="claude-sonnet-4-5@20250929",
             max_tokens=2000,
             messages=[{"role": "user", "content": conversion_prompt}],
         )
 
+        # Check stop_reason for issues
+        if response.stop_reason == "max_tokens":
+            print("WARNING: Response truncated by max_tokens limit")
+            return ReviewOutputSchema(
+                comments="",
+                summary=f"Response truncated - increase max_tokens. Partial analysis: {analysis[:200]}",
+                verdict=1,
+            )
+
         # Extract text content
         json_text = response.content[0].text.strip()
 
         # Remove markdown code blocks if present
         if json_text.startswith("```"):
-            # Extract JSON from markdown code block
             lines = json_text.split("\n")
-            json_text = "\n".join(lines[1:-1]) if len(lines) > 2 else json_text
+            # Remove first line (```json or ```) and last line (```)
+            if len(lines) > 2:
+                json_text = "\n".join(lines[1:-1])
 
-        # Parse JSON and validate with Pydantic
+        # Parse and validate with Pydantic
         json_data = json.loads(json_text)
         result = ReviewOutputSchema(**json_data)
 
-        # Convert Pydantic model to dict
-        return {
-            "comments": result.comments,
-            "summary": result.summary,
-            "verdict": result.verdict,
-        }
+        return result
 
     except json.JSONDecodeError as e:
-        # JSON parsing failed - show what we got
+        # JSON parsing failed
         print(f"WARNING: JSON parse failed: {e}")
         print(f"Response preview: {json_text[:500] if 'json_text' in locals() else 'No response'}")
-        return {
-            "comments": "",
-            "summary": f"JSON parse error. Original analysis: {analysis[:200]}",
-            "verdict": 1,
-        }
+        return ReviewOutputSchema(
+            comments="",
+            summary=f"JSON parse error: {str(e)[:100]}. Original analysis: {analysis[:200]}",
+            verdict=1,
+        )
     except Exception as e:
         # Other errors
-        print(f"WARNING: SDK conversion failed: {e}")
-        return {
-            "comments": "",
-            "summary": f"Conversion failed: {str(e)[:200]}. Original analysis: {analysis[:200]}",
-            "verdict": 1,
-        }
+        print(f"WARNING: Conversion failed: {e}")
+        return ReviewOutputSchema(
+            comments="",
+            summary=f"Conversion error: {str(e)[:200]}. Original analysis: {analysis[:200]}",
+            verdict=1,
+        )
 
 
 def run_claude_code(
@@ -173,7 +172,7 @@ def run_claude_code(
     schema: dict,
     config: "PRReviewConfig",
     timeout: int = 500,
-) -> dict:
+) -> "ReviewOutputSchema":
     """Execute 2-stage Claude Code analysis with reliable JSON output.
 
     Stage 1: Free-form analysis (no JSON constraint)
@@ -187,7 +186,7 @@ def run_claude_code(
         timeout: Maximum execution time in seconds (for stage 1)
 
     Returns:
-        Parsed JSON output matching schema
+        ReviewOutputSchema (on error, summary contains error message)
 
     Raises:
         ValueError: If workspace path does not exist
@@ -196,7 +195,7 @@ def run_claude_code(
     # Stage 1: Free-form analysis
     analysis = run_claude_analysis(prompt, workspace_path, config, timeout)
 
-    # Stage 2: Convert to JSON with SDK
-    structured = convert_to_json(analysis, schema, config, timeout=120)
+    # Stage 2: Convert to JSON with SDK using structured outputs
+    structured = convert_to_json(analysis, config)
 
     return structured

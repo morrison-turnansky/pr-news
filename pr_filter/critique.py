@@ -15,7 +15,7 @@ def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
         config: Configuration with skill paths and Vertex AI settings
 
     Returns:
-        ReviewResult with comments and verdict
+        ReviewResult (includes failed JSON parse cases with error in summary)
 
     Raises:
         ValueError: If Vertex AI configuration missing
@@ -31,11 +31,8 @@ def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
     try:
         output = run_claude_code(prompt, config.workspace_path, schema, config, timeout=500)
 
-        # Extract fields from simplified schema
-        comments = output.get("comments", "")
-        summary = output.get("summary", "")
-        verdict = output.get("verdict", 1)  # Default to PASS
-
+        # Convert ReviewOutputSchema to ReviewResult with PR metadata
+        # If JSON parsing failed, the summary will contain the error message
         return ReviewResult(
             pr_number=pr.pr_number,
             title=pr.title,
@@ -44,9 +41,9 @@ def critique_pr(pr: PullRequest, config: PRReviewConfig) -> ReviewResult:
             created_at=pr.created_at,
             updated_at=pr.updated_at,
             files_changed=pr.files_changed,
-            comments=comments,
-            summary=summary,
-            verdict=verdict,
+            comments=output.comments,
+            summary=output.summary,
+            verdict=output.verdict,
         )
 
     except Exception as e:

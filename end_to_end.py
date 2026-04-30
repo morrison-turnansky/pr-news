@@ -27,7 +27,7 @@ from pathlib import Path
 
 from pr_filter.config import load_config
 from pr_filter.critique import critique_pr
-from pr_filter.data_structs import Verdict
+from pr_filter.data_structs import ReviewResult, Verdict
 from pr_filter.filter import fetch_prs
 from pr_filter.output import export_json, print_review
 
@@ -90,8 +90,8 @@ def main():
     print("Step 2: Analyzing PRs with Claude Code agent...")
     print()
 
-    all_results = []
-    blocked_prs = []
+    all_results: list[ReviewResult] = []
+    blocked_prs: list[ReviewResult] = []
 
     for i, pr in enumerate(prs, 1):
         print(f"[{i}/{len(prs)}] PR #{pr.pr_number}: {pr.title}")
@@ -122,6 +122,7 @@ def main():
             print(f"  Skipping PR #{pr.pr_number}")
             print()
             continue
+
         break
 
     # Step 3: Display summary
@@ -142,11 +143,7 @@ def main():
             print(f"{i}. PR #{result.pr_number} - {result.title}")
             print(f"   Author: {result.author}")
             print(f"   URL: {result.url}")
-            print(
-                f"   Issues: {result.summary.total_issues} "
-                f"(Critical: {result.summary.critical}, Major: {result.summary.major})"
-            )
-            print(f"   {result.summary.explanation}")
+            print(f"   Summary: {result.summary}")
             print()
 
     # Step 4: Export results

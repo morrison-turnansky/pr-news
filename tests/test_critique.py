@@ -8,7 +8,7 @@ import pytest
 
 from pr_filter.config import PRReviewConfig
 from pr_filter.critique import critique_pr
-from pr_filter.data_structs import PullRequest, ReviewResult
+from pr_filter.data_structs import PullRequest, ReviewOutputSchema, ReviewResult
 
 
 @pytest.fixture
@@ -62,11 +62,11 @@ def test_critique_uses_fresh_agent_per_pr(mock_run_claude, sample_pr, config):
     Then: 3 separate run_claude_code() calls made, no session reuse
     """
     # Mock Claude Code to return PASS verdict
-    mock_run_claude.return_value = {
-        "comments": "",
-        "summary": "No issues found",
-        "verdict": 1,
-    }
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="",
+        summary="No issues found",
+        verdict=1,
+    )
 
     # Create 3 PRs
     pr1 = sample_pr
@@ -116,13 +116,13 @@ def test_critique_block_verdict_with_explanation(mock_run_claude, sample_pr, con
     When: critique_pr() called
     Then: BLOCK verdict with detailed explanation returned
     """
-    mock_run_claude.return_value = {
-        "comments": "Critical issue in torch/_dynamo/guards.py:42 - Guard generation logic fails to account for list mutation. "
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="Critical issue in torch/_dynamo/guards.py:42 - Guard generation logic fails to account for list mutation. "
         "Add mutation tracking in VariableTracker.",
-        "summary": "Guard generation logic in guards.py line 42 fails to account for list mutation. "
+        summary="Guard generation logic in guards.py line 42 fails to account for list mutation. "
         "This causes silent wrong results when the cached graph is reused with different list contents.",
-        "verdict": 0,
-    }
+        verdict=0,
+    )
 
     result = critique_pr(sample_pr, config)
 
@@ -149,11 +149,11 @@ def test_critique_pass_verdict_for_safe_change(mock_run_claude, config):
     When: critique_pr() called
     Then: PASS verdict returned
     """
-    mock_run_claude.return_value = {
-        "comments": "",
-        "summary": "This is a safe refactoring that improves code clarity without changing behavior.",
-        "verdict": 1,
-    }
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="",
+        summary="This is a safe refactoring that improves code clarity without changing behavior.",
+        verdict=1,
+    )
 
     safe_pr = PullRequest(
         pr_number=12348,
@@ -188,11 +188,11 @@ def test_critique_default_pass_on_uncertainty(mock_run_claude, config):
     When: critique_pr() called
     Then: PASS verdict (default behavior when uncertain)
     """
-    mock_run_claude.return_value = {
-        "comments": "",
-        "summary": "Cannot determine if this change introduces issues. Default to PASS.",
-        "verdict": 1,
-    }
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="",
+        summary="Cannot determine if this change introduces issues. Default to PASS.",
+        verdict=1,
+    )
 
     ambiguous_pr = PullRequest(
         pr_number=12349,
@@ -226,14 +226,14 @@ def test_critique_explanation_format(mock_run_claude, sample_pr, config):
     When: critique_pr() called
     Then: Comments include file, line, severity, category, message
     """
-    mock_run_claude.return_value = {
-        "comments": "Critical issue in torch/_dynamo/guards.py:42 - Modified guard generation to skip list mutation checks. "
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="Critical issue in torch/_dynamo/guards.py:42 - Modified guard generation to skip list mutation checks. "
         "Guard misses when VariableTracker wraps a mutated list. "
         "This fails when a VariableTracker wraps a list that gets mutated after guard creation. "
         "Suggestion: Add mutation tracking",
-        "summary": "Critical correctness bug in guard generation",
-        "verdict": 0,
-    }
+        summary="Critical correctness bug in guard generation",
+        verdict=0,
+    )
 
     result = critique_pr(sample_pr, config)
 
@@ -262,11 +262,11 @@ def test_critique_loads_skills(mock_run_claude, sample_pr, config):
     """
     config.skill_paths = ["skill1.md", "skill2.md"]
 
-    mock_run_claude.return_value = {
-        "comments": "",
-        "summary": "No issues found",
-        "verdict": 1,
-    }
+    mock_run_claude.return_value = ReviewOutputSchema(
+        comments="",
+        summary="No issues found",
+        verdict=1,
+    )
 
     critique_pr(sample_pr, config)
 
