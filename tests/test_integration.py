@@ -110,3 +110,58 @@ def test_load_config_with_boolean_filters(tmp_path):
 
     config2 = load_config(str(config_file2))
     assert config2.filter_config.is_merged is None
+
+
+def test_load_config_with_diff_filter(tmp_path):
+    """Verify config loads diff_filter section correctly."""
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "repository": "pytorch/pytorch",
+                "workspace_path": "/workspace/test",
+                "diff_filter": {
+                    "max_lines_changed": 1000,
+                    "max_files_changed": 10,
+                    "only_test_files": False,
+                },
+            }
+        )
+    )
+
+    config = load_config(str(config_file))
+    assert config.diff_filter_config.max_lines_changed == 1000
+    assert config.diff_filter_config.max_files_changed == 10
+    assert config.diff_filter_config.only_test_files is False
+
+    # Test with None values (default)
+    config_file2 = tmp_path / "config2.json"
+    config_file2.write_text(
+        json.dumps(
+            {
+                "repository": "pytorch/pytorch",
+                "workspace_path": "/workspace/test",
+                "diff_filter": {
+                    "max_lines_changed": None,
+                    "max_files_changed": None,
+                    "only_test_files": None,
+                },
+            }
+        )
+    )
+
+    config2 = load_config(str(config_file2))
+    assert config2.diff_filter_config.max_lines_changed is None
+    assert config2.diff_filter_config.max_files_changed is None
+    assert config2.diff_filter_config.only_test_files is None
+
+    # Test with missing diff_filter section (should use defaults)
+    config_file3 = tmp_path / "config3.json"
+    config_file3.write_text(
+        json.dumps({"repository": "pytorch/pytorch", "workspace_path": "/workspace/test"})
+    )
+
+    config3 = load_config(str(config_file3))
+    assert config3.diff_filter_config.max_lines_changed is None
+    assert config3.diff_filter_config.max_files_changed is None
+    assert config3.diff_filter_config.only_test_files is None

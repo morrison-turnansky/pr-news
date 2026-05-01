@@ -51,6 +51,30 @@ class PRFilter(BaseModel):
     is_draft: bool | None = None
 
 
+class DiffFilter(BaseModel):
+    """
+    Post-fetch filtering based on diff characteristics.
+
+    All fields optional. None = no filtering on that criterion.
+    Applied after GitHub API fetch, before Claude critique.
+    """
+
+    max_lines_changed: int | None = Field(
+        default=None,
+        description="Maximum number of changed lines (additions + deletions). Filter out PRs exceeding this.",
+    )
+    max_files_changed: int | None = Field(
+        default=None,
+        description="Maximum number of files changed. Filter out PRs exceeding this.",
+    )
+    only_test_files: bool | None = Field(
+        default=None,
+        description="If True, keep only PRs where all files are test files. "
+        "If False, keep only PRs with at least one non-test file. "
+        "If None, no filtering.",
+    )
+
+
 class PullRequest(BaseModel):
     """GitHub PR metadata and content."""
 
@@ -136,6 +160,7 @@ class PRReviewConfig(BaseModel):
     workspace_path: str
     skill_paths: list[str] = Field(default_factory=list)
     filter_config: PRFilter = Field(default_factory=PRFilter)
+    diff_filter_config: DiffFilter = Field(default_factory=DiffFilter)
     vertex_project_id: str | None = Field(
         default_factory=lambda: os.getenv("ANTHROPIC_VERTEX_PROJECT_ID")
     )

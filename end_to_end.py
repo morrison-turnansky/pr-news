@@ -28,7 +28,7 @@ from pathlib import Path
 from pr_filter.config import load_config
 from pr_filter.critique import critique_pr
 from pr_filter.data_structs import ReviewResult, Verdict
-from pr_filter.filter import fetch_prs
+from pr_filter.filter import diff_filter, fetch_prs
 from pr_filter.output import export_json, print_review
 
 
@@ -93,9 +93,37 @@ def main():
     print(f"✅ Fetched {len(prs)} PR(s)")
     print()
 
+    # Step 1.5: Apply diff-based filtering
+    print("Step 1.5: Applying diff-based filtering...")
+    diff_cfg = config.diff_filter_config
+    active_filters = []
+    if diff_cfg.max_lines_changed is not None:
+        active_filters.append(f"max_lines: {diff_cfg.max_lines_changed}")
+    if diff_cfg.max_files_changed is not None:
+        active_filters.append(f"max_files: {diff_cfg.max_files_changed}")
+    if diff_cfg.only_test_files is not None:
+        status = "only test files" if diff_cfg.only_test_files else "at least one non-test file"
+        active_filters.append(f"files: {status}")
+
+    if active_filters:
+        print(f"  Active diff filters: {', '.join(active_filters)}")
+        original_count = len(prs)
+        prs = diff_filter(
+            prs,
+            max_lines_changed=diff_cfg.max_lines_changed,
+            max_files_changed=diff_cfg.max_files_changed,
+            only_test_files=diff_cfg.only_test_files,
+        )
+        filtered_count = original_count - len(prs)
+        print(f"  Filtered out {filtered_count} PR(s), {len(prs)} remaining")
+    else:
+        print("  No diff filters active, skipping")
+
+    print()
+
     if len(prs) == 0:
         print("No PRs found matching filter criteria.")
-        print("Tip: Adjust the date range if needed.")
+        print("Tip: Adjust the date range or diff filters if needed.")
         sys.exit(0)
 
     # Step 2: Analyze PRs

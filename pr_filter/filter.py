@@ -79,11 +79,21 @@ def fetch_prs(
                 print(f"  WARNING: Failed to fetch diff for PR #{pr.number}: {e}")
                 diff = ""
 
+            # Parse files from diff
+            files_changed = []
+            for line in diff.splitlines():
+                if line.startswith("diff --git"):
+                    # Extract file path: "diff --git a/file.py b/file.py"
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        filepath = parts[2].removeprefix("a/")
+                        files_changed.append(filepath)
+
             pull_request = PullRequest(
                 pr_number=pr.number,
                 title=pr.title,
                 url=pr.url,
-                files_changed=[],  # Could parse from diff if needed
+                files_changed=files_changed,
                 diff=diff,
                 created_at=created,
                 updated_at=created,
@@ -93,3 +103,66 @@ def fetch_prs(
 
     print(f"\n✅ Fetched {len(all_prs)} PRs")
     return all_prs
+
+
+def _is_test_file(filepath: str) -> bool:
+    """Check if a file path is a test file.
+
+    Args:
+        filepath: Relative file path
+
+    Returns:
+        True if path contains 'test' or 'tests'
+    """
+    path_lower = filepath.lower()
+    return "test" in path_lower or "tests" in path_lower
+
+
+def diff_filter(
+    prs: list[PullRequest],
+    max_lines_changed: int | None = None,
+    max_files_changed: int | None = None,
+    only_test_files: bool | None = None,
+) -> list[PullRequest]:
+    """
+    Filter PRs based on diff characteristics.
+
+    Args:
+        prs: List of PRs to filter
+        max_lines_changed: Maximum lines changed (filter out larger PRs)
+        max_files_changed: Maximum files changed (filter out larger PRs)
+        only_test_files: If True, keep only PRs where all files are test files.
+                         If False, keep only PRs with at least one non-test file.
+                         If None, no filtering.
+
+    Returns:
+        Filtered list of PRs
+    """
+    filtered = []
+
+    for pr in prs:
+        # Filter by lines changed
+        if max_lines_changed is not None:
+            if pr.diff_lines > max_lines_changed:
+                continue
+
+        # Filter by number of files
+        if max_files_changed is not None:
+            if len(pr.files_changed) > max_files_changed:
+                continue
+
+        # Filter by test files
+        if only_test_files is not None:
+            if not pr.files_changed:
+                # No files parsed - can't determine, skip filter
+                pass
+            else:
+                all_test = all(_is_test_file(f) for f in pr.files_changed)
+                if only_test_files and not all_test:
+                    continue  # Want only test files, but has non-test files
+                if not only_test_files and all_test:
+                    continue  # Want non-test files, but all are test files
+
+        filtered.append(pr)
+
+    return filtered

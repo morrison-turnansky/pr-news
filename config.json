@@ -23,5 +23,14 @@
     "is_open": true,
     "_is_draft_comment": "Filter by draft status: true (drafts only), false (non-drafts only), null (all PRs)",
     "is_draft": false
+  },
+  "_diff_filter_comment": "Post-fetch filtering based on diff characteristics (applied before critique)",
+  "diff_filter": {
+    "_max_lines_changed_comment": "Filter out PRs with more than X lines changed (null = no limit)",
+    "max_lines_changed": 1000,
+    "_max_files_changed_comment": "Filter out PRs with more than X files changed (null = no limit)",
+    "max_files_changed": 10,
+    "_only_test_files_comment": "Filter by test file status: true (only test-only PRs), false (only PRs with non-test files), null (all PRs)",
+    "only_test_files": false
   }
 }

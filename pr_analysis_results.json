@@ -1,14 +1,24 @@
 [
   {
-    "pr_number": 182059,
-    "title": "[WIP] faketensor cpp: llama3 c++ dynamo working",
-    "url": "https://github.com/pytorch/pytorch/pull/182059",
-    "author": "liangel-02",
-    "created_at": "2026-04-30T19:12:05Z",
-    "updated_at": "2026-04-30T19:12:05Z",
-    "files_changed": [],
-    "comments": "CRITICAL BLOCKERS:\n\n1. output_graph.py:2674 - Unconditional AssertionError('graph completed') will crash all execution\n\n2. FakeFallbackKernel.cpp:454-507 - Automatic dtype unification for prims ops silently converts tensor types, causing:\n   - Wrong computation results for mixed-dtype ops\n   - Precision loss in dtype conversions\n   - No validation that conversion is semantically correct\n   - Only 0-dim tensors that are wrapped scalars should be converted, not all mismatched tensors\n\n3. TensorImpl.cpp:637 - custom_device_ field now copied without validation:\n   - Unclear ownership model (raw pointer? ref counted?)\n   - Could cause dangling pointers or device mismatches\n   - No explanation for why this field wasn't copied before\n\nMAJOR ISSUES:\n\n4. FakeFallbackKernel.cpp:335 - Removed SymInt safety check that previously blocked unsupported ops\n   - New code paths may not be SymInt-safe\n   - Needs comprehensive testing\n\n5. fake_tensor.py - Large previously-disabled sections now active (constant prop, real tensor prop, decompositions)\n   - No explanation why they were disabled or why now safe\n   - Could interact poorly with C++ SymInt handling\n\nMINOR:\n\n6. fake_tensor_commented.py - 3593-line reference file should not be committed",
-    "summary": "This WIP PR attempts to enable SymInt support in C++ FakeTensor but contains critical bugs: (1) a debug assertion that crashes execution, (2) unsafe automatic dtype conversion that silently changes semantics and could produce wrong results, (3) unvalidated copying of custom_device_ field with unknown safety implications. Additionally, the SymInt safety check was removed without sufficient validation, and large amounts of previously-disabled code were enabled without explanation. The PR requires significant fixes before it can be considered for merge.",
+    "pr_number": 182043,
+    "title": "[Dynamo] Implement nb_subtract / nb_inplace_subtract",
+    "url": "https://github.com/pytorch/pytorch/pull/182043",
+    "author": "guilhermeleobas",
+    "created_at": "2026-04-30T19:13:40Z",
+    "updated_at": "2026-04-30T19:13:40Z",
+    "files_changed": [
+      "test/dynamo/test_nb_operators.py",
+      "torch/_dynamo/variables/base.py",
+      "torch/_dynamo/variables/builtin.py",
+      "torch/_dynamo/variables/constant.py",
+      "torch/_dynamo/variables/dicts.py",
+      "torch/_dynamo/variables/object_protocol.py",
+      "torch/_dynamo/variables/sets.py",
+      "torch/_dynamo/variables/tensor.py",
+      "torch/_dynamo/variables/user_defined.py"
+    ],
+    "comments": "This PR implements nb_subtract / nb_inplace_subtract operators for PyTorch Dynamo, mirroring the existing nb_or implementation. However, it contains a CRITICAL BUG that will cause runtime failures:\n\n**BLOCKING ISSUE #1: Undefined function `pyanyset_check`**\nThe sets.py implementation calls `pyanyset_check()` on lines 603-604 and 618, but this function is not defined anywhere in the codebase. This will cause a NameError when set subtraction is executed. The function either needs to be defined or replaced with proper isinstance checks like `isinstance(self_, (SetVariable, FrozensetVariable))`.\n\n**POTENTIAL ISSUE #2: Missing C++ enum values**\nThe code references `PyNumberSlots.NB_SUBTRACT` and `PyNumberSlots.NB_INPLACE_SUBTRACT` but these may not exist in the C++ PyNumberSlots enum. This needs verification or the C++ side needs to be updated.\n\nThe overall architecture and implementation pattern is sound, with good test coverage and proper handling of edge cases. Once the undefined function issue is resolved and C++ enums are verified/added, this PR would be acceptable.",
+    "summary": "BLOCK - Critical bug: undefined function `pyanyset_check` will cause runtime NameError in set subtraction operations. Potential missing C++ enum values. Fix required before merge.",
     "verdict": 0
   }
 ]

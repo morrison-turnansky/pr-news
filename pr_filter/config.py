@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timedelta
 
-from pr_filter.data_structs import PRFilter, PRReviewConfig
+from pr_filter.data_structs import DiffFilter, PRFilter, PRReviewConfig
 
 
 def load_config(config_path: str) -> PRReviewConfig:
@@ -47,6 +47,14 @@ def load_config(config_path: str) -> PRReviewConfig:
         is_draft=filter_dict.get("is_draft"),
     )
 
+    # Parse diff filter configuration
+    diff_filter_dict = config_dict.get("diff_filter", {})
+    diff_filter_config = DiffFilter(
+        max_lines_changed=diff_filter_dict.get("max_lines_changed"),
+        max_files_changed=diff_filter_dict.get("max_files_changed"),
+        only_test_files=diff_filter_dict.get("only_test_files"),
+    )
+
     # Get skill_paths if provided (defaults to [] if not present or None)
     skill_paths = config_dict.get("skill_paths") or []
 
@@ -54,5 +62,6 @@ def load_config(config_path: str) -> PRReviewConfig:
         repository=config_dict["repository"],
         workspace_path=config_dict["workspace_path"],
         filter_config=filter_config,
+        diff_filter_config=diff_filter_config,
         skill_paths=skill_paths,
     )

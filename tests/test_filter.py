@@ -296,3 +296,177 @@ class TestFetchPRsDefaultValues:
         assert call_kwargs["is_merged"] is None
         assert call_kwargs["is_open"] is None
         assert call_kwargs["is_draft"] is None
+
+
+@pytest.fixture
+def sample_prs():
+    """Create sample PRs with different diff characteristics."""
+    return [
+        PullRequest(
+            pr_number=1,
+            title="Small PR",
+            url="https://github.com/test/repo/pull/1",
+            author="user1",
+            files_changed=["src/module.py"],
+            diff="+line1\n+line2\n-line3",  # 3 lines
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        ),
+        PullRequest(
+            pr_number=2,
+            title="Large PR",
+            url="https://github.com/test/repo/pull/2",
+            author="user2",
+            files_changed=["src/a.py", "src/b.py", "src/c.py"],
+            diff="\n".join([f"+line{i}" for i in range(100)]),  # 100 lines
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        ),
+        PullRequest(
+            pr_number=3,
+            title="Test-only PR",
+            url="https://github.com/test/repo/pull/3",
+            author="user3",
+            files_changed=["tests/test_module.py", "tests/test_utils.py"],
+            diff="+test line",  # 1 line
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        ),
+        PullRequest(
+            pr_number=4,
+            title="Mixed PR",
+            url="https://github.com/test/repo/pull/4",
+            author="user4",
+            files_changed=["src/module.py", "tests/test_module.py"],
+            diff="+line1\n+line2",  # 2 lines
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        ),
+    ]
+
+
+class TestIsTestFile:
+    """Test _is_test_file helper."""
+
+    def test_recognizes_test_prefix(self):
+        """Verify test file recognition for test prefix patterns."""
+        from pr_filter.filter import _is_test_file
+
+        assert _is_test_file("test_module.py") is True
+        assert _is_test_file("tests/test_utils.py") is True
+        assert _is_test_file("src/tests/test_file.cpp") is True
+
+    def test_recognizes_test_infix(self):
+        """Verify test file recognition for test infix patterns."""
+        from pr_filter.filter import _is_test_file
+
+        assert _is_test_file("module_test.py") is True
+        assert _is_test_file("src/testing/helper.py") is True
+
+    def test_rejects_non_test_files(self):
+        """Verify non-test files are not recognized as test files."""
+        from pr_filter.filter import _is_test_file
+
+        assert _is_test_file("src/module.py") is False
+        assert _is_test_file("README.md") is False
+
+
+class TestDiffFilterMaxLines:
+    """Test diff_filter with max_lines_changed."""
+
+    def test_filters_out_large_prs(self, sample_prs):
+        """Verify diff_filter removes PRs exceeding max_lines_changed."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, max_lines_changed=10)
+        pr_numbers = [pr.pr_number for pr in result]
+        assert 1 in pr_numbers  # 3 lines - keep
+        assert 2 not in pr_numbers  # 100 lines - filter out
+        assert 3 in pr_numbers  # 1 line - keep
+        assert 4 in pr_numbers  # 2 lines - keep
+
+    def test_none_keeps_all(self, sample_prs):
+        """Verify None max_lines_changed keeps all PRs."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, max_lines_changed=None)
+        assert len(result) == len(sample_prs)
+
+
+class TestDiffFilterMaxFiles:
+    """Test diff_filter with max_files_changed."""
+
+    def test_filters_out_multi_file_prs(self, sample_prs):
+        """Verify diff_filter removes PRs exceeding max_files_changed."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, max_files_changed=2)
+        pr_numbers = [pr.pr_number for pr in result]
+        assert 1 in pr_numbers  # 1 file - keep
+        assert 2 not in pr_numbers  # 3 files - filter out
+        assert 3 in pr_numbers  # 2 files - keep
+        assert 4 in pr_numbers  # 2 files - keep
+
+    def test_none_keeps_all(self, sample_prs):
+        """Verify None max_files_changed keeps all PRs."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, max_files_changed=None)
+        assert len(result) == len(sample_prs)
+
+
+class TestDiffFilterOnlyTestFiles:
+    """Test diff_filter with only_test_files."""
+
+    def test_true_keeps_only_test_prs(self, sample_prs):
+        """Verify only_test_files=True keeps only PRs with all test files."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, only_test_files=True)
+        pr_numbers = [pr.pr_number for pr in result]
+        assert 1 not in pr_numbers  # src file - filter out
+        assert 2 not in pr_numbers  # src files - filter out
+        assert 3 in pr_numbers  # all test files - keep
+        assert 4 not in pr_numbers  # mixed - filter out
+
+    def test_false_keeps_only_non_test_prs(self, sample_prs):
+        """Verify only_test_files=False keeps only PRs with non-test files."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, only_test_files=False)
+        pr_numbers = [pr.pr_number for pr in result]
+        assert 1 in pr_numbers  # has non-test - keep
+        assert 2 in pr_numbers  # has non-test - keep
+        assert 3 not in pr_numbers  # all test - filter out
+        assert 4 in pr_numbers  # has non-test - keep
+
+    def test_none_keeps_all(self, sample_prs):
+        """Verify None only_test_files keeps all PRs."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs, only_test_files=None)
+        assert len(result) == len(sample_prs)
+
+
+class TestDiffFilterCombined:
+    """Test diff_filter with multiple criteria."""
+
+    def test_combines_all_filters(self, sample_prs):
+        """Verify diff_filter applies all filter criteria together."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(
+            sample_prs, max_lines_changed=50, max_files_changed=2, only_test_files=False
+        )
+        pr_numbers = [pr.pr_number for pr in result]
+        assert 1 in pr_numbers  # 3 lines, 1 file, non-test - keep
+        assert 2 not in pr_numbers  # 100 lines - filter out (exceeds max_lines)
+        assert 3 not in pr_numbers  # all test files - filter out (only_test_files=False)
+        assert 4 in pr_numbers  # 2 lines, 2 files, has non-test - keep
+
+    def test_empty_filters_keeps_all(self, sample_prs):
+        """Verify diff_filter with no filters keeps all PRs."""
+        from pr_filter.filter import diff_filter
+
+        result = diff_filter(sample_prs)
+        assert len(result) == len(sample_prs)

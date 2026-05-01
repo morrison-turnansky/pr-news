@@ -36,6 +36,12 @@ Use explicit module imports (e.g., `from pr_filter.config import load_config`) r
                          │
                          ▼
                   ┌──────────────┐
+                  │ Diff Filter  │ Filter by lines changed, files changed, test files
+                  │ (filter.py)  │
+                  └──────┬───────┘
+                         │
+                         ▼
+                  ┌──────────────┐
                   │   Critique   │ Claude Code agent reviews each PR
                   │ (critique.py)│ Fresh agent per PR (no session reuse)
                   └──────┬───────┘
@@ -82,7 +88,15 @@ Shows the order files are called during a typical PR review run:
 **2. Fetch PRs**
 - **filter.py** - `fetch_prs()` queries GitHub API
   - Filters by label, author, date range, merge status, open status, draft status
+  - Populates files_changed from diff parsing
   - Returns list of `PullRequest` objects with diffs
+
+**2.5. Diff Filter**
+- **filter.py** - `diff_filter()` filters by diff characteristics
+  - max_lines_changed: Filter out PRs exceeding line threshold
+  - max_files_changed: Filter out PRs exceeding file threshold
+  - only_test_files: Filter by test file status (all test / has non-test / all)
+  - Returns filtered list of PRs
 
 **3. Review Each PR** (loop - fresh agent per PR)
 
