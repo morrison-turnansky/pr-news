@@ -1,6 +1,5 @@
 """Claude Code CLI execution with 2-stage approach for reliable JSON output."""
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -88,23 +87,17 @@ def convert_to_json(
     """
     from pr_filter.data_structs import ReviewOutputSchema
 
-    # Get JSON schema for reference in prompt
-    json_schema = ReviewOutputSchema.model_json_schema(mode="validation")
-
-    conversion_prompt = f"""Convert this PR review analysis into structured JSON.
+    conversion_prompt = f"""Convert this PR review analysis into structured review data.
 
 ANALYSIS:
 {analysis}
 
-CRITICAL REQUIREMENTS:
-- Output ONLY valid JSON - no markdown code blocks, no explanatory text
-- Match this exact schema: {json.dumps(json_schema, indent=2)}
-- verdict field MUST be integer: 0 (BLOCK) or 1 (PASS)
-- Put all review comments into "comments" field as text
-- Put overall assessment into "summary" field as text
-- If no issues found, use empty strings and verdict: 1
-
-Output the JSON object now:"""
+INSTRUCTIONS:
+- Record all review findings using the record_review tool
+- verdict: 0 for BLOCK (critical/major issues found), 1 for PASS (safe to merge)
+- comments: All review comments as text (file locations, severity, descriptions)
+- summary: Overall assessment and explanation of verdict
+- If no issues found, use empty strings and verdict: 1"""
 
     try:
         # Initialize Anthropic Vertex client
@@ -113,55 +106,45 @@ Output the JSON object now:"""
             region=config.cloud_ml_region or "global",
         )
 
-        print("Stage 2: Converting to JSON via prompt engineering...")
+        print("Stage 2: Converting to structured output via tool use...")
 
-        # Make API call without structured outputs (not supported on Vertex AI)
+        # Force Claude to use tool for structured output (deterministic JSON)
         response = client.messages.create(
             model="claude-sonnet-4-5@20250929",
             max_tokens=2000,
             messages=[{"role": "user", "content": conversion_prompt}],
+            tools=[
+                {
+                    "name": "record_review",
+                    "description": "Record the code review results",
+                    "input_schema": ReviewOutputSchema.model_json_schema(),
+                }
+            ],
+            tool_choice={"type": "tool", "name": "record_review"},
         )
 
-        # Check stop_reason for issues
-        if response.stop_reason == "max_tokens":
-            print("WARNING: Response truncated by max_tokens limit")
-            return ReviewOutputSchema(
-                comments="",
-                summary=f"Response truncated - increase max_tokens. Partial analysis: {analysis[:200]}",
-                verdict=1,
-            )
+        # Extract tool use block from response
+        tool_use = next(block for block in response.content if block.type == "tool_use")
 
-        # Extract text content
-        json_text = response.content[0].text.strip()
+        # Validate and parse structured data
+        review_data = ReviewOutputSchema.model_validate(tool_use.input)
 
-        # Remove markdown code blocks if present
-        if json_text.startswith("```"):
-            lines = json_text.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            if len(lines) > 2:
-                json_text = "\n".join(lines[1:-1])
+        return review_data
 
-        # Parse and validate with Pydantic
-        json_data = json.loads(json_text)
-        result = ReviewOutputSchema(**json_data)
-
-        return result
-
-    except json.JSONDecodeError as e:
-        # JSON parsing failed
-        print(f"WARNING: JSON parse failed: {e}")
-        print(f"Response preview: {json_text[:500] if 'json_text' in locals() else 'No response'}")
+    except StopIteration:
+        # No tool use block found in response
+        print("WARNING: No tool use block found in response")
         return ReviewOutputSchema(
             comments="",
-            summary=f"JSON parse error: {str(e)[:100]}. Original analysis: {analysis[:200]}",
+            summary=f"Tool use extraction failed. Analysis: {analysis[:200]}",
             verdict=1,
         )
     except Exception as e:
-        # Other errors
-        print(f"WARNING: Conversion failed: {e}")
+        # Validation errors or other issues
+        print(f"WARNING: Tool use validation failed: {e}")
         return ReviewOutputSchema(
             comments="",
-            summary=f"Conversion error: {str(e)[:200]}. Original analysis: {analysis[:200]}",
+            summary=f"Validation failed: {str(e)}. Analysis: {analysis[:200]}",
             verdict=1,
         )
 
