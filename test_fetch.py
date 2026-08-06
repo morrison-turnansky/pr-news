@@ -4,7 +4,7 @@
 import os
 from datetime import datetime, timedelta
 
-from pytorch_jira_bot.sync.github import GitHubClient
+from upstream_jira_sync.github import GitHubClient
 
 github_token = os.environ.get("GH_TOKEN")
 if not github_token:

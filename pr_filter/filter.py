@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 import yaml
-from pytorch_jira_bot.sync.github import GitHubClient
+from upstream_jira_sync.github import GitHubClient
 
 from pr_filter.data_structs import PRFilter, PullRequest
 
